@@ -9,6 +9,7 @@ Date:           09/16/2026
 # Imports
 import time
 import signal
+from matplotlib import pyplot as plt
 from rtlsdr import RtlSdr
 
 # Setup signal handling
@@ -35,23 +36,42 @@ sdr.sample_rate = SAMPLE_RATE
 sdr.center_freq = START_FREQ
 sdr.gain = GAIN
 
-sdr_old_freq = START_FREQ
+# PSD Plot Setup
+plt.ion()
+fig, ax = plt.subplots()
+
+def plot_psd(samples):
+    ax.clear()
+    ax.psd(samples, NFFT=1024, Fs=sdr.sample_rate / 1e6, Fc=sdr.center_freq / 1e6)
+    ax.set_xlabel('Frequency (MHz)')
+    ax.set_ylabel('Power (dB)')
+    ax.set_title('RTL-SDR Power Spectrum')
+    ax.grid(True)
+    fig.canvas.draw_idle()
+    #plt.pause()
+
 # Sweeping
+sweeping_up = True
 while running:                                                                                                                      # Want constant sweeping for now
     # Sample at center frequency
-    print(f"Sampling at: {sdr.center_freq}")
     samples = sdr.read_samples(256 * 1024)
     time.sleep(SLEEP_TIME)
-    
 
+    plot_psd(samples)
+
+    fig.canvas.draw_idle()
+    plt.pause(0.05)
+    
     # Increase or decrease center frequency for next scan
-    if((sdr.center_freq < END_FREQ and sdr.center_freq > sdr_old_freq) or (sdr.center_freq == START_FREQ)):                         # Want to increase frequency if we've not reached the max and are sweeping up
-        sdr_old_freq = sdr.center_freq
+    if(sweeping_up):                                                                                                                # Want to increase frequency if we've not reached the max and are sweeping up
         sdr.center_freq += STEP_FREQ
-        print(f"Increasing to: {sdr.center_freq}")
-    elif(sdr.center_freq > START_FREQ):                                                                                             # Want to decrease frequency if we've not reached the min and are sweeping down
-        sdr_old_freq = sdr.center_freq
+    else:                                                                                                                           # Want to decrease frequency if we've not reached the min and are sweeping down
         sdr.center_freq -= STEP_FREQ
-        print(f"Decreasing to: {sdr.center_freq}")
-        
+
+    # Check if we need to change direction
+    if(sdr.center_freq >= END_FREQ):
+        sweeping_up = False
+    elif(sdr.center_freq <= START_FREQ):
+        sweeping_up = True
+    
 sdr.close()
