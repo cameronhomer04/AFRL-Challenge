@@ -4,6 +4,7 @@ Subsystem:      Frequency Sweeping
 File:           Frequency_Sweeping_Rx
 Author:         Cameron Homer
 Date:           09/16/2026
+Description:    This is the outdate original script without class implementation
 """
 
 # Imports
