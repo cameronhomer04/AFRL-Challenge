@@ -4,6 +4,7 @@ Subsystem:      Frequency Sweeping
 File:           RTL-SDR_Test
 Author:         Cameron Homer
 Date:           09/16/2026
+Description:    This script is a test script for the RTL-SDR. The purpose of which is to test the hardware is working properly
 """
 
 import matplotlib.pyplot as plt
