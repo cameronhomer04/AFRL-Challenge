@@ -1,0 +1,24 @@
+Input:
+1024 IQ samples stored as a 2x1024 array
+
+Output:
+Probability distribution over 24 modulation classes. Highest one is the prediction.
+
+Architecture (basic):
+Input passes through 7 stacked convolution layers that each learn to detect small patterns in the waveform.
+Each subsequent layer gets wider (more filters) with exact filter numbers below:
+
+conv1: 2 -> 32
+conv2: 32 -> 48
+conv3: 48 -> 64
+conv4: 64 -> 72
+conv5: 72 -> 84
+conv6: 84 -> 96
+conv7: 96 -> 108
+
+There are 6 SE (Squeeze-and-Excitation) blocks, one between each convolutional layer. The SE blocks take an output from a conv layer, reweight it, and pass that version to the next conv layer.
+
+A statistical pooling layer sits at the end after conv layer 7. It computes mean and variance per chanel, resulting in 216 values (108 mean and 108 variance). This is concatenated into a single vector and passed through 2 small dense layers (216->128->128) and a final layer (128->24) that outputs the 24 raw scores which gets turned into the probability distribution via SoftMax.
+
+
+Dataset split: 70/15/15 train/val/test stratified by SNR
