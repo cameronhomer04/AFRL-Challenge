@@ -219,3 +219,6 @@ __marimo__/
 
 # MATLAB
 *.asv
+
+# Flutter/Dart Stuff
+.idea/
