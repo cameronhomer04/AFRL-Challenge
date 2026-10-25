@@ -8,6 +8,7 @@ Description:    Basic setup for mobile application
 */
 
 import 'package:flutter/material.dart';
+
 import 'screens/dashboard_screen.dart';
 
 void main() {

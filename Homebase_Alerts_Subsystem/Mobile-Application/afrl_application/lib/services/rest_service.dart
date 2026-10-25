@@ -10,6 +10,7 @@ Description:    Service that interfaces with our RESTful API
 import 'dart:async';
 import 'dart:convert';
 import 'package:http/http.dart' as http;
+
 import '../models/alert_data.dart';
 import "alert_service.dart";
 

@@ -10,8 +10,12 @@ Description:    Handles the display of the application
 import 'package:flutter/material.dart';
 import 'package:flutter/foundation.dart';
 import 'dart:async';
+
+import 'configuration_screen.dart';
 import '../models/alert_data.dart';
+import '../models/box_data.dart';
 import '../services/rest_service.dart';
+import '../services/notification_service.dart';
 
 class DashboardScreen extends StatefulWidget {
   const DashboardScreen({super.key});
@@ -24,8 +28,6 @@ class _DashboardScreenState extends State<DashboardScreen> {
   // Stuff for controllers (RESTful Service and interactable box)
   String _hostIp = "10.0.2.2";
   String _port = "5000";
-  late TextEditingController _ipController;
-  late TextEditingController _portController;
   List<AlertData> _alerts = [
     AlertData(
       status: "SCANNING",
@@ -36,12 +38,13 @@ class _DashboardScreenState extends State<DashboardScreen> {
   ];
   Timer? _pollingTimer;
   final RestAlertService _alertService = RestAlertService();
+  bool _wasAlertActive = false;
+  final NotificationService _notificationService = NotificationService();
 
   @override
   void initState() {
     super.initState();
-    _ipController = TextEditingController(text: _hostIp);
-    _portController = TextEditingController(text: _port);
+    _notificationService.init();
     startPolling();
   }
 
@@ -52,7 +55,19 @@ class _DashboardScreenState extends State<DashboardScreen> {
       (timer) async {
         final tempAlerts = await _alertService.getAlerts(_hostIp, _port);
         if (mounted && tempAlerts.isNotEmpty && !listEquals(_alerts, tempAlerts)){
-          setState(() {_alerts = tempAlerts;});
+          final bool currentlyActive = tempAlerts.any((a) => a.alertStatus);
+          if (currentlyActive && !_wasAlertActive) {
+            final uniqueId = DateTime.now().millisecondsSinceEpoch ~/ 1000;
+            _notificationService.showAlertNotification(
+              id: uniqueId,
+              title: "DRONE THREAT DETECTED",
+              body: "${tempAlerts.where((a) => a.alertStatus).length} active threat(s) detected across SDR nodes",
+            );
+          }
+          setState(() {
+            _alerts = tempAlerts;
+            _wasAlertActive = currentlyActive;
+          });
         }
       }
     );
@@ -60,27 +75,13 @@ class _DashboardScreenState extends State<DashboardScreen> {
 
   @override
   void dispose() {
-    _ipController.dispose();
-    _portController.dispose();
     _pollingTimer?.cancel();
     super.dispose();
   }
 
   @override
   Widget build(BuildContext context) {
-    // Worth noting that this will be 1 in the no alerts case b/c their will be a "SCANNING" Alert
-    // I think it will be useful for if we want implementation for if multiple alerts are found (Thinking of make multiple blocks of the data?)
-    //final int numAlerts = _alerts.length;
-    final bool isAlertActive = _alerts[0].alertStatus;
-    final double centerFrequency = _alerts[0].centerFreq; // Placeholder for actual center frequency logic
-    final String modType = _alerts[0].modulationType; // Placeholder for actual modulation type logic
-    final int sdrNode = _alerts[0].sdrNode; // Placeholder for actual SDR node logic
-
-    // Determine the units of the center frequency based on its value
-    String frequencyUnits = centerFrequency >= 1e9 ? "GHz" : "MHz";
-    String formattedFrequency = frequencyUnits == "GHz"
-        ? (centerFrequency / 1e9).toStringAsFixed(2)
-        : (centerFrequency / 1e6).toStringAsFixed(2);
+    final bool isAlertActive = _alerts.any((alert) => alert.alertStatus);
 
     // Build the dashboard UI
     return Scaffold(
@@ -88,114 +89,82 @@ class _DashboardScreenState extends State<DashboardScreen> {
         title: const Text("Homebase Alerts"),
         centerTitle: true,
         backgroundColor: const Color(0xFF1E1E1E),
-      ),
-      body: LayoutBuilder(
-        builder: (context, constaints) {
-          return SingleChildScrollView (
-            child : ConstrainedBox(
-              constraints: BoxConstraints(
-                minHeight: constaints.maxHeight,
-              ),
-              child: IntrinsicHeight(
-                child: Padding (
-                  padding: const EdgeInsets.all(16.0),
-                  child: Column(
-                    crossAxisAlignment: CrossAxisAlignment.stretch,
-                    children: [
-                      // Display the current alert status
-                      Row(
-                        children: [
-                          Expanded(
-                            child: _buildAlertBox(
-                              isAlertActive ? "ALERT ACTIVE" : "SCANNING ACTIVE",
-                              isAlertActive ? Icons.warning_amber_rounded : Icons.task_alt_rounded,
-                              isAlertActive ? Colors.redAccent : Colors.greenAccent,
-                              isAlertActive ? Colors.red : Colors.green,
-                              Colors.black,
-                              isAlertActive ? Colors.red : Colors.green
-                            ),
-                          ),
-                        ],
-                      ),
-                      // Add some spacing between the rows of boxes
-                      const SizedBox(height: 24),
-                      
-                      // Only display metric data if in alert mode, otherwise hide these displays
-                      if (isAlertActive) ...[
-                        Row(
-                          children: [
-                            // Display the center frequency of the alert
-                            Expanded(
-                              child: _buildInfoBox(
-                                "Center Frequency",
-                                "$formattedFrequency $frequencyUnits",
-                                Icons.radar,
-                                const Color(0xFF1E1E1E),
-                                Colors.white60,
-                                Colors.greenAccent
-                              ),
-                            ),
-                            const SizedBox(width: 12),
-                            // Display the modulation type of the alert
-                            Expanded(
-                              child: _buildInfoBox(
-                                "Modulation Type",
-                                modType,
-                                Icons.graphic_eq,
-                                const Color(0xFF1E1E1E),
-                                Colors.white60,
-                                Colors.greenAccent
-                              ),
-                            ),
-                          ],
-                        ),
-                        // Add some spacing between the rows of boxes
-                        const SizedBox(height: 24),
-
-                        Row(
-                          children: [
-                            // Display the SDR Node that alerted
-                            Expanded(
-                              child: _buildInfoBox(
-                                "SDR Node",
-                                "$sdrNode",
-                                Icons.router,
-                                const Color(0xFF1E1E1E),
-                                Colors.white60,
-                                Colors.greenAccent
-                              ),
-                            ),
-                          ]
-                        ),
-                      ],  // End of the conditional display of metric data boxes
-                      const SizedBox(height: 24),
-                      // Add IP Configuration box at bottom of dashboard
-                      const Spacer(),
-                      _buildConfigBox(
-                        title: "Host IP Address",
-                        activeValue: _hostIp,
-                        controller: _ipController,
-                        onSave: (newValue) {
-                          setState(() => _hostIp = newValue);
-                        },
-                      ),
-                      const SizedBox(height: 24),
-                      _buildConfigBox(
-                        title: "Port",
-                        activeValue: _port,
-                        controller: _portController,
-                        onSave: (newValue) {
-                          setState(() => _port = newValue);
-                        },
-                      ),
-                      const SizedBox(height: 24) // Add some spacing at the bottom
-                    ],
+        actions: [
+          IconButton(
+            icon: const Icon(Icons.settings),
+            onPressed: () {
+              Navigator.push(
+                context,
+                MaterialPageRoute(
+                  builder: (context) => ConfigurationScreen(
+                    currentIp: _hostIp,
+                    currentPort: _port,
+                    onSave: (newIp, newPort) {
+                      setState(() {
+                        _hostIp = newIp;
+                        _port = newPort;
+                      });
+                      // Re-trigger polling loop with new IP/Port
+                      startPolling();
+                    },
                   ),
                 ),
+              );
+            },
+          ),
+        ],
+      ),
+      body: SingleChildScrollView (
+        // This prevents the user's over scrolling to stretch the dashboard. Instead it just sort of scrolls further into nothing. May perfer the stretch idk
+        physics: const BouncingScrollPhysics(),
+        child: Padding (
+          padding: const EdgeInsets.all(16.0),
+          child: Column(
+            crossAxisAlignment: CrossAxisAlignment.stretch,
+            children: [
+            // Display the current alert status
+              Row(
+                children: [
+                  Expanded(
+                    child: _buildAlertBox(
+                      isAlertActive ? "ALERT ACTIVE" : "SCANNING ACTIVE",
+                      isAlertActive ? Icons.warning_amber_rounded : Icons.task_alt_rounded,
+                      isAlertActive ? Colors.redAccent : Colors.greenAccent,
+                      isAlertActive ? Colors.red : Colors.green,
+                      Colors.black,
+                      isAlertActive ? Colors.red : Colors.green
+                    ),
+                  ),
+                ],
               ),
-            ),
-          );
-        },
+              // Add some spacing between the rows of boxes
+              const SizedBox(height: 24),
+              // Display all alerts
+              for (final alert in _alerts.where((alert) => alert.alertStatus)) ...[
+                _buildDataBox(
+                  BoxData(
+                    label: "Center Frequency",
+                    value: alert.centerFreq >= 1e3
+                    ? "${(alert.centerFreq / 1e3).toStringAsFixed(2)} GHz"
+                    : "${alert.centerFreq.toStringAsFixed(2)} MHz",
+                    icon: Icons.radar,
+                  ),
+                  BoxData(
+                    label: "Modulation Type",
+                    value: alert.modulationType,
+                    icon: Icons.graphic_eq,
+                  ),
+                  BoxData(
+                    label: "SDR Node",
+                    value: "${alert.sdrNode}",
+                    icon: Icons.router,
+                  ),
+                ), // _buildDataBox
+                const SizedBox(height: 24),
+              ],
+            ],
+          ),
+        ),
       ),
     );
   }
@@ -237,13 +206,41 @@ class _DashboardScreenState extends State<DashboardScreen> {
     );
   }
 
+  // Helper function to build a singular alert data box
+  Widget _buildDataBox(BoxData centerFreqBox, BoxData modTypeBox, BoxData sdrNodeBox){
+    return Container(
+      padding: const EdgeInsets.all(16.0),
+      decoration: BoxDecoration(
+        color: const Color(0xFF2C2C2C),
+        borderRadius: BorderRadius.circular(12.0),
+      ),
+      child: Column(
+        children: [
+          Row(
+            children: [
+              Expanded(child: _buildInfoBox(sdrNodeBox)),
+            ],
+          ),
+          const SizedBox(height: 12),
+          Row(
+            children: [
+              Expanded(child: _buildInfoBox(centerFreqBox)),
+              const SizedBox(width: 12),
+              Expanded(child: _buildInfoBox(modTypeBox)),
+            ],
+          ),
+        ],
+      ),
+    );
+  }
+
   // Helper function to build data boxes for the dashboard
-  Widget _buildInfoBox(String label, String value, IconData icon, Color boxColor, Color textColor, Color iconColor) {
+  Widget _buildInfoBox(BoxData data) {
     return Container(
       padding: const EdgeInsets.all(16.0),
       // Build a box with a border radius and a background color that can be customized
       decoration: BoxDecoration(
-        color: boxColor,
+        color: data.boxColor,
         borderRadius: BorderRadius.circular(12.0),
       ),
       // Place an icon and text inside the box that can be customized
@@ -251,16 +248,17 @@ class _DashboardScreenState extends State<DashboardScreen> {
         children: [
           // Icon in the box
           Icon(
-            icon, 
-            color: iconColor, 
+            data.icon, 
+            color: data.iconColor, 
             size: 28
           ),
           const SizedBox(height: 12),
           // Text for label
           Text(
-            label,
+            data.label,
+            textAlign: TextAlign.center,
             style: TextStyle(
-              color: textColor,
+              color: data.textColor,
               fontSize: 18,
               fontWeight: FontWeight.bold,
             ),
@@ -268,236 +266,12 @@ class _DashboardScreenState extends State<DashboardScreen> {
           const SizedBox(height: 4),
           // Text for value
           Text(
-            value,
+            data.value,
+            textAlign: TextAlign.center,
             style: TextStyle(
-              color: textColor,
+              color: data.textColor,
               fontSize: 16,
             ),
-          ),
-        ],
-      ),
-    );
-  }
-
-/*
-  // Helper function to build IP configuration box for the dashboard
-  Widget _buildIPConfigBox() {
-    return Container(
-      padding: const EdgeInsets.all(16.0),
-      decoration: BoxDecoration(
-        color: const Color(0xFF1E1E1E),
-        borderRadius: BorderRadius.circular(12.0),
-      ),
-      child: Column(
-        crossAxisAlignment: CrossAxisAlignment.start,
-        children: [
-          Row(
-            mainAxisAlignment: MainAxisAlignment.spaceBetween,
-            children: [
-              const Text(
-                "Host IP Configuration",
-                style: TextStyle(
-                  color: Colors.white60,
-                  fontSize: 16,
-                  fontWeight: FontWeight.bold,
-                ),
-              ),
-              Text(
-                "Active: $_hostIp",
-                style: const TextStyle(color: Colors.greenAccent, fontSize: 12),
-              ),
-            ],
-          ),
-          const SizedBox(height: 8),
-          Row(
-            children: [
-              Expanded(
-                child: TextField(
-                  controller: _ipController, 
-                  decoration: InputDecoration(
-                    hintText: "Enter Host IP Address",
-                    hintStyle: const TextStyle(color: Colors.white38),
-                    filled: true,
-                    fillColor: const Color(0xFF2C2C2C),
-                    border: OutlineInputBorder(
-                      borderRadius: BorderRadius.circular(8.0),
-                      borderSide: BorderSide.none,
-                    ),
-                    contentPadding: const EdgeInsets.symmetric(horizontal: 12, vertical: 12),
-                  ),
-                  style: const TextStyle(color: Colors.white),
-                  keyboardType: const TextInputType.numberWithOptions(decimal: true),
-                ),
-              ),
-              const SizedBox(width: 8),
-              // Button to commit the typed value into state
-              ElevatedButton(
-                onPressed: () {
-                  setState(() {
-                    _hostIp = _ipController.text.trim();
-                  });
-                  // Unfocus keyboard
-                  FocusScope.of(context).unfocus();
-                },
-                style: ElevatedButton.styleFrom(
-                  backgroundColor: Colors.greenAccent,
-                  foregroundColor: Colors.black,
-                  shape: RoundedRectangleBorder(
-                    borderRadius: BorderRadius.circular(8.0),
-                  ),
-                ),
-                child: const Text("Save", style: TextStyle(fontWeight: FontWeight.bold)),
-              ),
-            ],
-          ),
-        ],
-      ),
-    );
-  }
-
-  Widget _buildPortConfigBox() {
-    return Container(
-      padding: const EdgeInsets.all(16.0),
-      decoration: BoxDecoration(
-        color: const Color(0xFF1E1E1E),
-        borderRadius: BorderRadius.circular(12.0),
-      ),
-      child: Column(
-        crossAxisAlignment: CrossAxisAlignment.start,
-        children: [
-          Row(
-            mainAxisAlignment: MainAxisAlignment.spaceBetween,
-            children: [
-              const Text(
-                "Port Configuration",
-                style: TextStyle(
-                  color: Colors.white60,
-                  fontSize: 16,
-                  fontWeight: FontWeight.bold,
-                ),
-              ),
-              Text(
-                "Active: $_port",
-                style: const TextStyle(color: Colors.greenAccent, fontSize: 12),
-              ),
-            ],
-          ),
-          const SizedBox(height: 8),
-          Row(
-            children: [
-              Expanded(
-                child: TextField(
-                  controller: _portController, 
-                  decoration: InputDecoration(
-                    hintText: "Enter Port",
-                    hintStyle: const TextStyle(color: Colors.white38),
-                    filled: true,
-                    fillColor: const Color(0xFF2C2C2C),
-                    border: OutlineInputBorder(
-                      borderRadius: BorderRadius.circular(8.0),
-                      borderSide: BorderSide.none,
-                    ),
-                    contentPadding: const EdgeInsets.symmetric(horizontal: 12, vertical: 12),
-                  ),
-                  style: const TextStyle(color: Colors.white),
-                  keyboardType: const TextInputType.numberWithOptions(decimal: true),
-                ),
-              ),
-              const SizedBox(width: 8),
-              // Button to commit the typed value into state
-              ElevatedButton(
-                onPressed: () {
-                  setState(() {
-                    _port = _portController.text.trim();
-                  });
-                  // Unfocus keyboard
-                  FocusScope.of(context).unfocus();
-                },
-                style: ElevatedButton.styleFrom(
-                  backgroundColor: Colors.greenAccent,
-                  foregroundColor: Colors.black,
-                  shape: RoundedRectangleBorder(
-                    borderRadius: BorderRadius.circular(8.0),
-                  ),
-                ),
-                child: const Text("Save", style: TextStyle(fontWeight: FontWeight.bold)),
-              ),
-            ],
-          ),
-        ],
-      ),
-    );
-  }
-*/
-
-
-  // New Interactable Generic Config Box (kept only method for git purposes since I think both ways work, I just KNOW that the old way does work)
-  Widget _buildConfigBox({required String title, required String activeValue, required TextEditingController controller, required ValueChanged<String> onSave,}) {
-    return Container(
-      padding: const EdgeInsets.all(16.0),
-      decoration: BoxDecoration(
-        color: const Color(0xFF1E1E1E),
-        borderRadius: BorderRadius.circular(12.0),
-      ),
-      child: Column(
-        crossAxisAlignment: CrossAxisAlignment.start,
-        children: [
-          Row(
-            mainAxisAlignment: MainAxisAlignment.spaceBetween,
-            children: [
-              Text(
-                "$title Configuration",
-                style: TextStyle(
-                  color: Colors.white60,
-                  fontSize: 16,
-                  fontWeight: FontWeight.bold,
-                ),
-              ),
-              Text(
-                "Active: $activeValue",
-                style: const TextStyle(color: Colors.greenAccent, fontSize: 12),
-              ),
-            ],
-          ),
-          const SizedBox(height: 8),
-          Row(
-            children: [
-              Expanded(
-                child: TextField(
-                  controller: controller, 
-                  decoration: InputDecoration(
-                    hintText: "Enter $title",
-                    hintStyle: const TextStyle(color: Colors.white38),
-                    filled: true,
-                    fillColor: const Color(0xFF2C2C2C),
-                    border: OutlineInputBorder(
-                      borderRadius: BorderRadius.circular(8.0),
-                      borderSide: BorderSide.none,
-                    ),
-                    contentPadding: const EdgeInsets.symmetric(horizontal: 12, vertical: 12),
-                  ),
-                  style: const TextStyle(color: Colors.white),
-                  keyboardType: const TextInputType.numberWithOptions(decimal: true),
-                ),
-              ),
-              const SizedBox(width: 8),
-              // Button to commit the typed value into state
-              ElevatedButton(
-                onPressed: () {
-                  onSave(controller.text.trim());
-                  // Unfocus keyboard
-                  FocusScope.of(context).unfocus();
-                },
-                style: ElevatedButton.styleFrom(
-                  backgroundColor: Colors.greenAccent,
-                  foregroundColor: Colors.black,
-                  shape: RoundedRectangleBorder(
-                    borderRadius: BorderRadius.circular(8.0),
-                  ),
-                ),
-                child: const Text("Save", style: TextStyle(fontWeight: FontWeight.bold)),
-              ),
-            ],
           ),
         ],
       ),
