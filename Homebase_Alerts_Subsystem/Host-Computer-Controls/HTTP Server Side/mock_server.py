@@ -21,9 +21,27 @@ def get_alerts():
         return jsonify([
             {
                 "status": "ALERT",
-                "center_freq": 2450000000.0,
+                "center_freq": 2450.0,
                 "modulation": "64QAM",
                 "node": 1
+            },
+            {
+                "status": "ALERT",
+                "center_freq": 70,
+                "modulation": "FM",
+                "node": 2
+            },
+            {
+                "status": "ALERT",
+                "center_freq": 5600,
+                "modulation": "QPSK",
+                "node": 3
+            },
+            {
+                "status": "SCANNING",
+                "center_freq": 0.0,
+                "modulation": "NONE",
+                "node": 0
             }
         ])
     else:

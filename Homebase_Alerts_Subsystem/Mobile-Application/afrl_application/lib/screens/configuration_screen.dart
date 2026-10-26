@@ -68,7 +68,12 @@ class _ConfigurationScreenState extends State<ConfigurationScreen> {
       SnackBar(
         content: Text(message),
         duration: const Duration(seconds: 5),
-        backgroundColor: Colors.green,
+        backgroundColor: Colors.greenAccent,
+        behavior: SnackBarBehavior.floating,
+        margin: EdgeInsets.all(16),
+        shape: RoundedRectangleBorder(
+          borderRadius: BorderRadius.all(Radius.circular(10)),
+        ),
       ),
     );
   }
