@@ -3,8 +3,8 @@ Project:        AFRL Challenge
 Subsystem:      Homebase Alerts
 File:           dashboard_screen.dart
 Author:         Cameron Homer
-Date:           10/05/2026
-Description:    Handles the display of the application
+Date:           10/26/2026
+Description:    Handles the display of the application with tcp service
 */
 
 import 'package:flutter/material.dart';
@@ -12,9 +12,10 @@ import 'package:flutter/foundation.dart';
 import 'dart:async';
 
 import 'configuration_screen.dart';
+import 'reset_screen.dart';
 import '../models/alert_data.dart';
 import '../models/box_data.dart';
-import '../services/rest_service.dart';
+import '../services/tcp_service.dart';
 import '../services/notification_service.dart';
 
 class DashboardScreen extends StatefulWidget {
@@ -36,8 +37,8 @@ class _DashboardScreenState extends State<DashboardScreen> {
       sdrNode: 0,
     ),
   ];
-  Timer? _pollingTimer;
-  final RestAlertService _alertService = RestAlertService();
+  final TcpAlertService _tcpService = TcpAlertService();
+  StreamSubscription<List<AlertData>>? _alertSubscription;
   bool _wasAlertActive = false;
   final NotificationService _notificationService = NotificationService();
 
@@ -45,37 +46,37 @@ class _DashboardScreenState extends State<DashboardScreen> {
   void initState() {
     super.initState();
     _notificationService.init();
-    startPolling();
+    _setupTcpListener();
+    _tcpService.connect(_hostIp, _port);
   }
 
-  void startPolling() {
-    _pollingTimer?.cancel();
-    _pollingTimer = Timer.periodic(
-      const Duration(milliseconds: 300), 
-      (timer) async {
-        final tempAlerts = await _alertService.getAlerts(_hostIp, _port);
-        if (mounted && tempAlerts.isNotEmpty && !listEquals(_alerts, tempAlerts)){
-          final bool currentlyActive = tempAlerts.any((a) => a.alertStatus);
-          if (currentlyActive && !_wasAlertActive) {
-            final uniqueId = DateTime.now().millisecondsSinceEpoch ~/ 1000;
-            _notificationService.showAlertNotification(
-              id: uniqueId,
-              title: "DRONE THREAT DETECTED",
-              body: "${tempAlerts.where((a) => a.alertStatus).length} active threat(s) detected across SDR nodes",
-            );
-          }
-          setState(() {
-            _alerts = tempAlerts;
-            _wasAlertActive = currentlyActive;
-          });
+  void _setupTcpListener() {
+    _alertSubscription = _tcpService.alertStream.listen((tempAlerts) {
+      if (mounted && tempAlerts.isNotEmpty && !listEquals(_alerts, tempAlerts)) {
+        final bool currentlyActive = tempAlerts.any((a) => a.alertStatus);
+        
+        // Trigger notification when transitioning into an alert state
+        if (currentlyActive && !_wasAlertActive) {
+          final uniqueId = DateTime.now().millisecondsSinceEpoch ~/ 1000;
+          _notificationService.showAlertNotification(
+            id: uniqueId,
+            title: "DRONE THREAT DETECTED",
+            body: "${tempAlerts.where((a) => a.alertStatus).length} active threat(s) detected across SDR nodes",
+          );
         }
+
+        setState(() {
+          _alerts = tempAlerts;
+          _wasAlertActive = currentlyActive;
+        });
       }
-    );
+    });
   }
 
   @override
   void dispose() {
-    _pollingTimer?.cancel();
+    _alertSubscription?.cancel();
+    _tcpService.dispose();
     super.dispose();
   }
 
@@ -89,9 +90,24 @@ class _DashboardScreenState extends State<DashboardScreen> {
         title: const Text("Homebase Alerts"),
         centerTitle: true,
         backgroundColor: const Color(0xFF1E1E1E),
+        leading: IconButton(
+          icon: const Icon(Icons.refresh),
+          tooltip: "Reset System",
+          onPressed: () {
+            Navigator.push(
+              context,
+              MaterialPageRoute(
+                builder: (context) => ResetScreen(
+                  tcpService: _tcpService,
+                ),
+              ),
+            );
+          },
+        ),
         actions: [
           IconButton(
             icon: const Icon(Icons.settings),
+            tooltip: "Settings",
             onPressed: () {
               Navigator.push(
                 context,
@@ -105,7 +121,7 @@ class _DashboardScreenState extends State<DashboardScreen> {
                         _port = newPort;
                       });
                       // Re-trigger polling loop with new IP/Port
-                      startPolling();
+                      _tcpService.connect(_hostIp, _port);
                     },
                   ),
                 ),
