@@ -26,6 +26,7 @@ class TcpAlertService {
 
   /// Stream of live alert updates pushed from the server
   Stream<List<AlertData>> get alertStream => _alertController.stream;
+  bool get isConnected => _isConnected;
 
   /// Connects to the raw TCP server and listens for line-delimited JSON
   Future<void> connect(String hostIp, String port) async {
