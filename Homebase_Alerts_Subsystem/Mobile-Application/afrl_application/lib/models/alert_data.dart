@@ -46,4 +46,13 @@ class AlertData {
       sdrNode: json['node'] ?? 0,
     );
   }
+
+  Map<String, dynamic> toJson() {
+    return {
+      'status': status,
+      'center_freq': centerFreq,
+      'modulation': modulationType,
+      'node': sdrNode,
+    };
+  }
 }

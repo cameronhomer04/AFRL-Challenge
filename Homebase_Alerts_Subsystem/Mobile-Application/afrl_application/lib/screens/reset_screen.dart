@@ -8,15 +8,10 @@ Description:    Handles resetting the server's alert data
 */
 
 import 'package:flutter/material.dart';
-import '../services/tcp_service.dart';
+import 'package:flutter_foreground_task/flutter_foreground_task.dart';
 
 class ResetScreen extends StatefulWidget {
-  final TcpAlertService tcpService;
-
-  const ResetScreen({
-    super.key,
-    required this.tcpService,
-  });
+  const ResetScreen({super.key});
 
   @override
   State<ResetScreen> createState() => _ResetScreenState();
@@ -30,7 +25,7 @@ class _ResetScreenState extends State<ResetScreen> {
       _isResetting = true;
     });
 
-    await widget.tcpService.sendResetCommand();
+    FlutterForegroundTask.sendDataToTask('RESET');
 
     if (mounted) {
       ScaffoldMessenger.of(context).showSnackBar(

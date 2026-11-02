@@ -8,6 +8,7 @@ Description:    Handles the user configuration of IP Address and Port
 */
 
 import 'package:flutter/material.dart';
+import 'package:shared_preferences/shared_preferences.dart';
 
 class ConfigurationScreen extends StatefulWidget {
   final String currentIp;
@@ -47,17 +48,27 @@ class _ConfigurationScreenState extends State<ConfigurationScreen> {
     super.dispose();
   }
 
-  void _handleSaveIp(String newIp) {
+  void _handleSaveIp(String newIp) async {
+    if (newIp.trim().isEmpty) return;
+    final prefs = await SharedPreferences.getInstance();
+    await prefs.setString('server_ip', newIp.trim());
+    await prefs.setString('server_port', _activePort);
+
     setState(() {
-      _activeIp = newIp;
+      _activeIp = newIp.trim();
     });
     widget.onSave(_activeIp, _activePort);
     _showSuccessSnackBar("Host IP updated to $_activeIp");
   }
 
-  void _handleSavePort(String newPort) {
+  void _handleSavePort(String newPort) async {
+    if (newPort.trim().isEmpty) return;
+    final prefs = await SharedPreferences.getInstance();
+    await prefs.setString('server_ip', _activeIp);
+    await prefs.setString('server_port', newPort.trim());
+
     setState(() {
-      _activePort = newPort;
+      _activePort = newPort.trim();
     });
     widget.onSave(_activeIp, _activePort);
     _showSuccessSnackBar("Port updated to $_activePort");
@@ -122,7 +133,7 @@ class _ConfigurationScreenState extends State<ConfigurationScreen> {
             mainAxisAlignment: MainAxisAlignment.spaceBetween,
             children: [
               Text(
-                "$title Configuration",
+                title,
                 style: const TextStyle(
                   color: Colors.white60,
                   fontSize: 16,

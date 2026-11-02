@@ -7,16 +7,18 @@ Date:           10/26/2026
 Description:    Handles the display of the application with tcp service
 */
 
+import 'dart:developer' as dev;
 import 'package:flutter/material.dart';
-import 'package:flutter/foundation.dart';
+import 'package:shared_preferences/shared_preferences.dart';
+import 'package:flutter_foreground_task/flutter_foreground_task.dart';
 import 'dart:async';
+import 'dart:convert';
 
 import 'configuration_screen.dart';
 import 'reset_screen.dart';
 import '../models/alert_data.dart';
 import '../models/box_data.dart';
-import '../services/tcp_service.dart';
-import '../services/notification_service.dart';
+import '../services/controller_service.dart';
 
 class DashboardScreen extends StatefulWidget {
   const DashboardScreen({super.key});
@@ -26,160 +28,183 @@ class DashboardScreen extends StatefulWidget {
 }
 
 class _DashboardScreenState extends State<DashboardScreen> {
-  // Stuff for controllers (RESTful Service and interactable box)
   String _hostIp = "10.0.2.2";
   String _port = "5000";
-  List<AlertData> _alerts = [
+
+  // 1. Define your own ValueNotifier to pass into ValueListenableBuilder
+  final ValueNotifier<List<AlertData>> _alertsNotifier = ValueNotifier([
     AlertData(
       status: "SCANNING",
       centerFreq: 0.0,
       modulationType: "NONE",
       sdrNode: 0,
     ),
-  ];
-  final TcpAlertService _tcpService = TcpAlertService();
-  StreamSubscription<List<AlertData>>? _alertSubscription;
-  bool _wasAlertActive = false;
-  final NotificationService _notificationService = NotificationService();
+  ]);
 
   @override
   void initState() {
     super.initState();
-    _notificationService.init();
-    _setupTcpListener();
-    _tcpService.connect(_hostIp, _port);
-  }
-
-  void _setupTcpListener() {
-    _alertSubscription = _tcpService.alertStream.listen((tempAlerts) {
-      if (mounted && tempAlerts.isNotEmpty && !listEquals(_alerts, tempAlerts)) {
-        final bool currentlyActive = tempAlerts.any((a) => a.alertStatus);
-        
-        // Trigger notification when transitioning into an alert state
-        if (currentlyActive && !_wasAlertActive) {
-          final uniqueId = DateTime.now().millisecondsSinceEpoch ~/ 1000;
-          _notificationService.showAlertNotification(
-            id: uniqueId,
-            title: "DRONE THREAT DETECTED",
-            body: "${tempAlerts.where((a) => a.alertStatus).length} active threat(s) detected across SDR nodes",
-          );
-        }
-
-        setState(() {
-          _alerts = tempAlerts;
-          _wasAlertActive = currentlyActive;
-        });
-      }
-    });
+    // 2. Register the callback with flutter_foreground_task
+    FlutterForegroundTask.addTaskDataCallback(_onReceiveTaskData);
+    _loadSavedConfigAndStart();
   }
 
   @override
   void dispose() {
-    _alertSubscription?.cancel();
-    _tcpService.dispose();
+    // Clean up both the callback and notifier when unmounting
+    FlutterForegroundTask.removeTaskDataCallback(_onReceiveTaskData);
+    _alertsNotifier.dispose();
     super.dispose();
+  }
+
+  // 3. Update the ValueNotifier whenever new isolate data arrives
+  void _onReceiveTaskData(Object data) {
+    dev.log("==== ISOLATE DATA RECEIVED IN UI: $data ====");
+
+    try {
+      List<dynamic> parsedList = [];
+
+      if (data is String) {
+        parsedList = jsonDecode(data) as List<dynamic>;
+      } else if (data is List) {
+        parsedList = data;
+      }
+
+      final List<AlertData> newAlerts = parsedList.map((item) {
+        final Map<String, dynamic> jsonMap = {};
+        if (item is Map) {
+          item.forEach((key, value) {
+            jsonMap[key.toString()] = value;
+          });
+        }
+        return AlertData.fromJson(jsonMap);
+      }).toList();
+
+      if (newAlerts.isNotEmpty) {
+        // Assigning a new list triggers ValueListenableBuilder automatically!
+        _alertsNotifier.value = newAlerts;
+        dev.log("==== DASHBOARD NOTIFIER UPDATED WITH ${newAlerts.length} ALERTS ====");
+      }
+    } catch (e, stack) {
+      dev.log("==== PARSING ERROR IN DASHBOARD: $e ====");
+      dev.log(stack.toString());
+    }
+  }
+
+  Future<void> _loadSavedConfigAndStart() async {
+    final prefs = await SharedPreferences.getInstance();
+    if(mounted){
+      setState(() {
+        _hostIp = prefs.getString('server_ip') ?? "10.0.2.2";
+        _port = prefs.getString('server_port') ?? "5000";
+      });
+    }
+
+    if(!await FlutterForegroundTask.isRunningService){
+      await ForegroundTaskController.startService(_hostIp, _port);
+    }
   }
 
   @override
   Widget build(BuildContext context) {
-    final bool isAlertActive = _alerts.any((alert) => alert.alertStatus);
-
-    // Build the dashboard UI
-    return Scaffold(
-      appBar: AppBar(
-        title: const Text("Homebase Alerts"),
-        centerTitle: true,
-        backgroundColor: const Color(0xFF1E1E1E),
-        leading: IconButton(
-          icon: const Icon(Icons.refresh),
-          tooltip: "Reset System",
-          onPressed: () {
-            Navigator.push(
-              context,
-              MaterialPageRoute(
-                builder: (context) => ResetScreen(
-                  tcpService: _tcpService,
-                ),
-              ),
-            );
-          },
-        ),
-        actions: [
-          IconButton(
-            icon: const Icon(Icons.settings),
-            tooltip: "Settings",
+    return WithForegroundTask(
+      child: Scaffold(
+        appBar: AppBar(
+          title: const Text("Homebase Alerts"),
+          centerTitle: true,
+          backgroundColor: const Color(0xFF1E1E1E),
+          leading: IconButton(
+            icon: const Icon(Icons.refresh),
+            tooltip: "Reset System",
             onPressed: () {
               Navigator.push(
                 context,
                 MaterialPageRoute(
-                  builder: (context) => ConfigurationScreen(
-                    currentIp: _hostIp,
-                    currentPort: _port,
-                    onSave: (newIp, newPort) {
-                      setState(() {
-                        _hostIp = newIp;
-                        _port = newPort;
-                      });
-                      // Re-trigger polling loop with new IP/Port
-                      _tcpService.connect(_hostIp, _port);
-                    },
-                  ),
+                  builder: (context) => const ResetScreen(),
                 ),
               );
             },
           ),
-        ],
-      ),
-      body: SingleChildScrollView (
-        // This prevents the user's over scrolling to stretch the dashboard. Instead it just sort of scrolls further into nothing. May perfer the stretch idk
-        physics: const BouncingScrollPhysics(),
-        child: Padding (
-          padding: const EdgeInsets.all(16.0),
-          child: Column(
-            crossAxisAlignment: CrossAxisAlignment.stretch,
-            children: [
-            // Display the current alert status
-              Row(
-                children: [
-                  Expanded(
-                    child: _buildAlertBox(
-                      isAlertActive ? "ALERT ACTIVE" : "SCANNING ACTIVE",
-                      isAlertActive ? Icons.warning_amber_rounded : Icons.task_alt_rounded,
-                      isAlertActive ? Colors.redAccent : Colors.greenAccent,
-                      isAlertActive ? Colors.red : Colors.green,
-                      Colors.black,
-                      isAlertActive ? Colors.red : Colors.green
+          actions: [
+            IconButton(
+              icon: const Icon(Icons.settings),
+              tooltip: "Settings",
+              onPressed: () {
+                Navigator.push(
+                  context,
+                  MaterialPageRoute(
+                    builder: (context) => ConfigurationScreen(
+                      currentIp: _hostIp,
+                      currentPort: _port,
+                      onSave: (newIp, newPort) async {
+                        setState(() {
+                          _hostIp = newIp;
+                          _port = newPort;
+                        });
+                        FlutterForegroundTask.sendDataToTask('RECONNECT');
+                      },
                     ),
                   ),
-                ],
+                );
+              },
+            ),
+          ],
+        ),
+        // 4. ValueListenableBuilder listens directly to _alertsNotifier!
+        body: ValueListenableBuilder<List<AlertData>>(
+          valueListenable: _alertsNotifier,
+          builder: (context, alerts, child) {
+            final bool isAlertActive = alerts.any((alert) => alert.alertStatus);
+
+            return SingleChildScrollView(
+              physics: const BouncingScrollPhysics(),
+              child: Padding(
+                padding: const EdgeInsets.all(16.0),
+                child: Column(
+                  crossAxisAlignment: CrossAxisAlignment.stretch,
+                  children: [
+                    Row(
+                      children: [
+                        Expanded(
+                          child: _buildAlertBox(
+                            isAlertActive ? "ALERT ACTIVE" : "SCANNING ACTIVE",
+                            isAlertActive ? Icons.warning_amber_rounded : Icons.task_alt_rounded,
+                            isAlertActive ? Colors.redAccent : Colors.greenAccent,
+                            isAlertActive ? Colors.red : Colors.green,
+                            Colors.black,
+                            isAlertActive ? Colors.red : Colors.green,
+                          ),
+                        ),
+                      ],
+                    ),
+                    const SizedBox(height: 24),
+                    for (final alert in alerts.where((alert) => alert.alertStatus)) ...[
+                      _buildDataBox(
+                        BoxData(
+                          label: "Center Frequency",
+                          value: alert.centerFreq >= 1e3
+                              ? "${(alert.centerFreq / 1e3).toStringAsFixed(2)} GHz"
+                              : "${alert.centerFreq.toStringAsFixed(2)} MHz",
+                          icon: Icons.radar,
+                        ),
+                        BoxData(
+                          label: "Modulation Type",
+                          value: alert.modulationType,
+                          icon: Icons.graphic_eq,
+                        ),
+                        BoxData(
+                          label: "SDR Node",
+                          value: "${alert.sdrNode}",
+                          icon: Icons.router,
+                        ),
+                      ),
+                      const SizedBox(height: 24),
+                    ],
+                  ],
+                ),
               ),
-              // Add some spacing between the rows of boxes
-              const SizedBox(height: 24),
-              // Display all alerts
-              for (final alert in _alerts.where((alert) => alert.alertStatus)) ...[
-                _buildDataBox(
-                  BoxData(
-                    label: "Center Frequency",
-                    value: alert.centerFreq >= 1e3
-                    ? "${(alert.centerFreq / 1e3).toStringAsFixed(2)} GHz"
-                    : "${alert.centerFreq.toStringAsFixed(2)} MHz",
-                    icon: Icons.radar,
-                  ),
-                  BoxData(
-                    label: "Modulation Type",
-                    value: alert.modulationType,
-                    icon: Icons.graphic_eq,
-                  ),
-                  BoxData(
-                    label: "SDR Node",
-                    value: "${alert.sdrNode}",
-                    icon: Icons.router,
-                  ),
-                ), // _buildDataBox
-                const SizedBox(height: 24),
-              ],
-            ],
-          ),
+            );
+          },
         ),
       ),
     );
