@@ -8,6 +8,8 @@ Description:    Executable script for controlling the MATLAB server side
 %}
 
 function tcp_main()
+    addpath(fullfile(pwd, '', 'Mesh_Network_Subsystem'))
+    
     port = 5000;
     defaultScanningStruct = struct('status', "SCANNING", 'center_freq', 0.0, 'modulation', "NONE", 'node', 0);
     activeAlerts = defaultScanningStruct;
@@ -31,10 +33,11 @@ function tcp_main()
     fprintf('  MATLAB Raw TCP Server listening on port %d...\n', port);
     fprintf('====================================================\n');
     fprintf('AVAILABLE TEST COMMANDS:\n');
-    fprintf('  1. <7-hex payload> : Decode and inject a threat (e.g., 1100A0C)\n');
-    fprintf('  2. reset           : Reset server back to SCANNING mode\n');
-    fprintf('  3. status          : Display active alert JSON in terminal\n');
-    fprintf('  4. exit            : Shutdown the server\n\n');
+    fprintf('  1. sdr             : Trigger USRP B210 RF loopback capture\n');
+    fprintf('  2. <7-hex payload> : Manually inject a threat (e.g., 1100A0C)\n');
+    fprintf('  3. reset           : Reset server back to SCANNING mode\n');
+    fprintf('  4. status          : Display active alert JSON in terminal\n');
+    fprintf('  5. exit            : Shutdown the server\n\n');
 
     while true
         drawnow;
@@ -53,6 +56,36 @@ function tcp_main()
         elseif strcmpi(userInput, 'status')
             fprintf('--> CURRENT JSON OUTPUT:\n%s\n', formatJsonArray(activeAlerts));
             
+        elseif strcmpi(userInput, 'sdr')
+            fprintf('--> Triggering USRP B210 RF Loopback Capture...\n');
+            try
+                hexPayload = runNodeFunctionVersion();
+                
+                if strlength(hexPayload) > 0
+                    p = Payload(hexPayload);
+                    if p.isValid
+                        newAlert = p.toAlertStruct();
+                        
+                        if activeAlerts(1).node == 0 && strcmp(activeAlerts(1).status, "SCANNING")
+                            activeAlerts = newAlert;
+                        else
+                            activeAlerts(end+1) = newAlert; %#ok<AGROW>
+                        end
+                        
+                        fprintf('--> B210 RF ALERT CAPTURED & INJECTED! (Node %d | %.2f MHz | %s)\n', ...
+                            p.sdrNode, p.centerFreq, p.modType);
+                        
+                        broadcastState(server, activeAlerts);
+                    else
+                        fprintf('--> B210 Payload Checksum Failed (%s).\n', hexPayload);
+                    end
+                else
+                    fprintf('--> B210 RF Capture failed or returned empty payload.\n');
+                end
+            catch err
+                fprintf('--> ERROR executing SDR capture: %s\n', err.message);
+            end
+            
         elseif ~isempty(userInput)
             try
                 p = Payload(userInput);
@@ -69,7 +102,6 @@ function tcp_main()
                     fprintf('--> CHECKSUM PASSED! Total Active Alerts: %d (Added Node %d | %.2f MHz | %s)\n', ...
                         length(activeAlerts), p.sdrNode, p.centerFreq, p.modType);
                     
-                    % Instantly push updated state to connected mobile client
                     broadcastState(server, activeAlerts);
                 else
                     fprintf('--> CHECKSUM FAILED! Payload dropped.\n');
@@ -83,12 +115,11 @@ end
 
 %% Helper Function: Broadcasts JSON state string over TCP pipe
 function broadcastState(server, alertState)
-    % Only attempt to write if a TCP client is actively connected
     if server.Connected
         jsonBody = formatJsonArray(alertState);
         write(server, uint8([jsonBody newline]));
     else
-        fprintf('--> INFO: No client connected to receive stream update.\n');
+        fprintf('--> INFO: No mobile client connected to receive stream update.\n');
     end
 end
 
@@ -109,13 +140,11 @@ function handleTcpClient(src, ~, getAlertsFcn, setAlertsFcn, defaultScanningStru
         inboundBytes = read(src, bytesAvailable, "uint8");
         inboundText = strtrim(char(inboundBytes));
         
-        % Process out-of-band RESET command from Flutter app
         if strcmp(inboundText, 'RESET')
             setAlertsFcn(defaultScanningStruct);
             fprintf('\n--> REMOTE RESET RECEIVED: Cleared alerts via Mobile App.\nServer Console >> ');
             broadcastState(src, defaultScanningStruct);
         else
-            % If client requests state explicitly upon connection, push current state back
             broadcastState(src, getAlertsFcn());
         end
     end

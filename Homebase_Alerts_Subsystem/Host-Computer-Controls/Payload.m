@@ -20,10 +20,19 @@ classdef Payload
     methods
         function obj = Payload(rawPayload)
             if isstring(rawPayload) || ischar(rawPayload)
-                obj.payload = uint32(hex2dec(rawPayload));
-            else
-                obj.payload = uint32(rawPayload);
+                rawStr = char(rawPayload);
+                % Trim string to the last 7 hex digits to prevent double-precision loss
+            if length(rawStr) > 7
+                rawStr = rawStr(end-6:end);
             end
+                numVal = uint64(hex2dec(rawStr));
+            else
+                % If numeric, apply mask directly
+                numVal = uint64(rawPayload);
+            end
+
+            % Mask the lowest 7 hex digits (28 bits)
+            obj.payload = uint32(bitand(numVal, uint64(hex2dec('0FFFFFFF'))));
             % sdrNode is just the integer value of the first hex val
             obj.sdrNode = uint8(bitshift(bitand(obj.payload, hex2dec('F000000')), -24));
             % modType is the decoded string from the integer value of the
