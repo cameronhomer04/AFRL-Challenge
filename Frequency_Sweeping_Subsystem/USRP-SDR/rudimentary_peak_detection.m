@@ -21,13 +21,13 @@ arguments (Output)
 end
 
 N = length(iqdata);
-spectrum = abs(fftshift(fft(iqdata)));
-[peakVal, peakIndex] = max(spectrum);
+fftSpectrum = fftshift(fft(iqdata));
+powerSpectrum = 10 * log10(abs(fftSpectrum).^2 / N + eps);
+[peakVal, peakIndex] = max(powerSpectrum);
 if peakVal >= POWER_THRESHOLD
     freqVector = (-N/2 : (N/2)-1) * (SAMPLE_RATE / N);
     peakOffset = freqVector(peakIndex);
     peakFreq = centerFreq + peakOffset;
-    peakFreq = NaN;
 else
     peakFreq = NaN;
 end
