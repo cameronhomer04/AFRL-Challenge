@@ -17,20 +17,21 @@ START_FREQ = 900e6;                                     % We may want to eventua
 END_FREQ = 930e6;                                       % Eventually this needs to be set to the higher end of the sweeping range probably something like MAX_FREQ-(STEP_FREQ/2)
 STEP_FREQ = 5e6;                                        % This just needs to be some value below MAX_STEP_FREQ so we never skip any frequencies (may make sense to eventually have this be MAX_STEP_FREQ exactly)
 MASTER_CLOCK_RATE = 10e6;                               % This should be fine between 10-61.44 MHz according to Gemini and is used to set our sampling rate
-DECIMATION_FACTOR = 2;
+DECIMATION_FACTOR = 10;
 SAMPLE_RATE = MASTER_CLOCK_RATE / DECIMATION_FACTOR;
 GAIN = 45.0;                                            % There is no auto gain setting like in Python for the RTL so this probably needs to be a variable that gets fine tuned to some extent
 SAMPLES_PER_FRAME = 65536;                              % Equivalent to setting the .read_samples(256 * 1024) in python script, setting to 65536 b/c that is what the FMSpectrum test file does
 FOCUSED_TIME = 1.0;                                     % This is mostly going to be determined by how many spectrogram samples we need for our CNN when in the FOCUS state
-POWER_THRESHOLD = 50.0;                                 % This is for the rudimentary peak detection module that I'm using at the moment. Ideally if this variable remains needed, Anusree determines what it should be
+POWER_THRESHOLD = 45.0;                                 % This is for the rudimentary peak detection module that I'm using at the moment. Ideally if this variable remains needed, Anusree determines what it should be
 
 % Set testing flag
 testing = true;
+TITLE = 'USRP B210 Sweeping State';
 
 % Initialize USRP
 USRP = comm.SDRuReceiver(...
     'Platform',             'B210', ...
-    'SerialNum',            '3511EE2', ...
+    'SerialNum',            '34D9DDE', ...
     'ChannelMapping',       1, ...
     'CenterFrequency',      START_FREQ, ...
     'MasterClockRate',      MASTER_CLOCK_RATE, ...
@@ -46,7 +47,7 @@ if testing
         'FrequencyOffset',  START_FREQ, ...
         'NumInputPorts',    1, ...
         'ShowLegend',       true, ...
-        'Title',            'USRP B210 Sweeping & Focused State Machine');
+        'Title',            TITLE);
 end
 
 
@@ -61,6 +62,7 @@ try
 
                 if testing
                     sa.FrequencyOffset = USRP.CenterFrequency;
+                    sa.Title = "USRP B210 Sweeping State";
                     [iqdata, len, ~] = USRP();
                     if len > 0, sa(iqdata); end
                 end
@@ -77,6 +79,7 @@ try
                 
                 if testing
                     sa.FrequencyOffset = USRP.CenterFrequency;
+                    sa.Title = "USRP B210 Focused State";
                     [iqdata, len, ~] = USRP();
                     if len > 0, sa(iqdata); end
                 end
