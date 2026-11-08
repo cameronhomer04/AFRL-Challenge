@@ -42,8 +42,11 @@ class TcpAlertService {
       _isConnected = true;
 
       // We do this to make matlab recognize the tcp socket handshake
-      _socket!.write('INIT\n');
-      await _socket!.flush();
+      await Future.delayed(const Duration(milliseconds: 300));
+      if (_socket != null && _isConnected) {
+        _socket!.write('INIT\n');
+        await _socket!.flush();
+      }
 
       _subscription = _socket!
           .cast<List<int>>()
