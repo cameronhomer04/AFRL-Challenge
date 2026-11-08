@@ -102,6 +102,8 @@ class _DashboardScreenState extends State<DashboardScreen> {
 
     if(!await FlutterForegroundTask.isRunningService){
       await ForegroundTaskController.startService(_hostIp, _port);
+    } else {
+      FlutterForegroundTask.sendDataToTask('GET_LAST_JSON');
     }
   }
 

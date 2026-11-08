@@ -9,12 +9,20 @@ Description:    Basic setup for mobile application
 
 import 'package:flutter/material.dart';
 import 'package:flutter_foreground_task/flutter_foreground_task.dart';
+import 'package:shared_preferences/shared_preferences.dart';
 
 import 'screens/dashboard_screen.dart';
 import 'services/controller_service.dart';
 
-void main() {
+void main() async{
   WidgetsFlutterBinding.ensureInitialized();
+  final prefs = await SharedPreferences.getInstance();
+  if(!prefs.containsKey('server_ip')){
+    await prefs.setString('server_ip', '10.0.2.2');
+  }
+  if(!prefs.containsKey('server_port')){
+    await prefs.setString('server_port', '5000');
+  }
   FlutterForegroundTask.initCommunicationPort();
   ForegroundTaskController.initService();
   runApp(const AFRLAlertApp());

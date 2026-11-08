@@ -31,11 +31,12 @@ class AlertSystemTaskHandler extends TaskHandler {
   String _currentPort = '';
   bool _isConnecting = false;
 
+  String? _lastReceivedJSON;
+
   @override
   Future<void> onStart(DateTime timestamp, TaskStarter starter) async {
     _notificationService = NotificationService();
     await _notificationService?.init();
-
     await _connectSocketFromPrefs();
   }
 
@@ -46,6 +47,11 @@ class AlertSystemTaskHandler extends TaskHandler {
       _tcpService?.sendResetCommand();
     } else if (data == 'RECONNECT') {
       _connectSocketFromPrefs(forceReconnect: true);
+    } else if (data == 'GET_LAST_JSON') {
+      if (_lastReceivedJSON != null) {
+        dev.log('==== RETURNING CACHED ALERTS TO REOPENED UI ====');
+        FlutterForegroundTask.sendDataToMain(_lastReceivedJSON!);
+      }
     }
   }
 
@@ -77,7 +83,7 @@ class AlertSystemTaskHandler extends TaskHandler {
           final rawJsonList = tempAlerts.map((a) => a.toJson()).toList();
           final String jsonString = jsonEncode(rawJsonList);
           dev.log('==== Sending data to main: $jsonString ====');
-          
+          _lastReceivedJSON = jsonString;
           // Send encoded JSON payload to UI
           FlutterForegroundTask.sendDataToMain(jsonString);
 
