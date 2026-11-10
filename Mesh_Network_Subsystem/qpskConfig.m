@@ -9,7 +9,7 @@ function cfg = qpskConfig()
 % baseband sample rate (symbolRate x samplesPerSymbol); this is checked here.
 
     % ---- Shared radio settings ----
-    cfg.centerFrequency = 2.4e9;
+    cfg.centerFrequency = 900e6;        % 2.4 GHz ISM band (2.400-2.4835 GHz)
     cfg.samplesPerFrame = 4096;
 
     % ---- Modulation (identical on every node) ----
@@ -28,6 +28,10 @@ function cfg = qpskConfig()
     cfg.maxPacketSymbols = (cfg.preambleLength + cfg.lengthFieldBits + ...
                             4*cfg.maxHexChars + cfg.checksumBits) / 2;
 
+    % Packet detection: a real preamble scores about 0.85-1.0, noise alone
+    % about 0.35-0.45. Below this value the receiver reports "no packet".
+    cfg.minPreambleMetric = 0.7;
+
     % ---- Per-platform settings ----
     % B210 (USB, found by serial number). 32 MHz / 40 = 800 kS/s.
     cfg.platforms.B210 = struct( ...
@@ -35,7 +39,7 @@ function cfg = qpskConfig()
         'interpFactor',    40, ...
         'decimFactor',     40, ...
         'txGain',          50, ...      % dB, B210 range about 0-89.75
-        'rxGain',          30, ...
+        'rxGain',          50, ...
         'txChannel',       1, ...
         'rxChannel',       2);
 

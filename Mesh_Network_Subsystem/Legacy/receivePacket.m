@@ -7,8 +7,6 @@ function rx = receivePacket(cfg, rxBuffer)
 %   rxBuffer - samples from captureSamples
 %
 %   rx - struct with fields
-%       detected         true if a preamble was found (metric >= cfg.minPreambleMetric)
-%       rmsDbfs, peakDbfs received signal level, dB relative to full scale
 %       valid            true if a sensible length field was decoded
 %       checksumOK       true if the payload checksum matches
 %       hexMessage       recovered message ('' if not valid)
@@ -38,25 +36,11 @@ function rx = receivePacket(cfg, rxBuffer)
     rx.payloadBits = zeros(0, 1);
     rx.decisionDistance = zeros(0, 1);
     rx.payloadDiff = zeros(0, 1);
-    rx.detected = false;
-    rx.freqOffsetHz = NaN;
-
-    % Signal level in dB relative to full scale (0 dBFS = amplitude 1).
-    rx.rmsDbfs  = 10*log10(mean(abs(rxBuffer).^2) + eps);
-    rx.peakDbfs = 20*log10(max(abs(rxBuffer)) + eps);
 
     % ---- Matched filter and sync (room for the longest possible packet) ----
     rx.matched = filter(cfg.rrcFilter, 1, rxBuffer);
     rx.sync = detectPacket(rx.matched, knownPreambleDiff, ...
                            cfg.maxPacketSymbols, cfg.samplesPerSymbol);
-
-    rx.numPacketSymbols = cfg.maxPacketSymbols;
-    rx.packetSymbols    = rx.sync.packetSymbols;
-    rx.packetCorrected  = rx.sync.packetSymbols;
-    if rx.sync.metric < cfg.minPreambleMetric
-        return;                                      % only noise: no packet here
-    end
-    rx.detected = true;
 
     % ---- Frequency correction from the preamble ----
     [corrected, phasePerSymbol] = correctFrequencyOffset(rx.sync.packetSymbols, knownPreambleDiff);

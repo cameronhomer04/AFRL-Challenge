@@ -21,9 +21,9 @@
 clear; clc;
 
 %% ---------------- NODE SETTINGS ----------------
-role       = "both";              % "tx", "rx" or "both"
-hexMessage = "2e9bbe1209322102349567";      % sent by "tx" and "both" (1-255 hex characters)
-txDuration = 10;                 % seconds a "tx" node transmits; Inf = until Ctrl+C
+role       = "rx";              % "tx", "rx" or "both"
+hexMessage = "DEAD";      % sent by "tx" and "both" (1-255 hex characters)
+txDuration = 30;                 % seconds a "tx" node transmits; Inf = until Ctrl+C
 showPlots  = true;
 
 x310Addresses = {};               % X310 IPs to probe if the search misses one, e.g. {'192.168.10.2'}

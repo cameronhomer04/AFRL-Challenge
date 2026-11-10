@@ -1,11 +1,8 @@
-function sdr = setupSdrNode(cfg, radio, role, rxBurstFrames)
+function sdr = setupSdrNode(cfg, radio, role)
 % SETUPSDRNODE  Create only the radio objects a node's role needs.
 %
 %   sdr = setupSdrNode(cfg, radio, role)
-%   sdr = setupSdrNode(cfg, radio, role, rxBurstFrames)
 %
-%   rxBurstFrames - (optional) burst size for the receiver, used by the
-%                   continuous receiver (see createSdrReceiver). Default 0.
 %   cfg   - settings from qpskConfig
 %   radio - one element from findSdrRadios / selectSdrRadio. For role
 %           "both" you may pass two, [txRadio, rxRadio], to transmit on
@@ -23,7 +20,6 @@ function sdr = setupSdrNode(cfg, radio, role, rxBurstFrames)
 %
 % Release with releaseSdrNode(sdr) when finished.
 
-    if nargin < 4, rxBurstFrames = 0; end
     role = lower(string(role));
     if numel(radio) > 2 || (numel(radio) == 2 && role ~= "both")
         error('Pass one radio, or two ([txRadio, rxRadio]) for role "both".');
@@ -51,6 +47,6 @@ function sdr = setupSdrNode(cfg, radio, role, rxBurstFrames)
         sdr.tx = createSdrTransmitter(cfg, sdr.txRadio);
     end
     if ~isempty(sdr.rxRadio)
-        sdr.rx = createSdrReceiver(cfg, sdr.rxRadio, rxBurstFrames);
+        sdr.rx = createSdrReceiver(cfg, sdr.rxRadio);
     end
 end
