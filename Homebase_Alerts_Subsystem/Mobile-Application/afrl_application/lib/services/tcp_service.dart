@@ -58,6 +58,7 @@ class TcpAlertService {
             var data = jsonDecode(line) as List<dynamic>;
             List<AlertData> dataList = data.map((d) => AlertData.fromJson(d)).toList();
             _alertController.add(dataList);
+            _socket?.write('ACK\n');
           } catch (err) {
             // Drop malformed frames silently
           }

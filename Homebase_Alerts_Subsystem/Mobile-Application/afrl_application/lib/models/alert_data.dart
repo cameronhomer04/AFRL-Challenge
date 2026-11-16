@@ -12,12 +12,14 @@ class AlertData {
   final double centerFreq;
   final String modulationType;
   final int sdrNode;
+  final String receivedTime;
 
   AlertData({
     required this.status,
     required this.centerFreq,
     required this.modulationType,
-    required this.sdrNode
+    required this.sdrNode,
+    this.receivedTime = "",
   });
 
   @override
@@ -27,14 +29,16 @@ class AlertData {
       status == other.status &&
       centerFreq == other.centerFreq &&
       modulationType == other.modulationType &&
-      sdrNode == other.sdrNode;
-  
+      sdrNode == other.sdrNode &&
+      receivedTime == other.receivedTime;
+
   @override
   int get hashCode =>
     status.hashCode ^
     centerFreq.hashCode ^
     modulationType.hashCode ^
-    sdrNode.hashCode;
+    sdrNode.hashCode ^
+    receivedTime.hashCode;
 
   bool get alertStatus => status == 'ALERT';
 
@@ -44,6 +48,7 @@ class AlertData {
       centerFreq: (json['center_freq'] as num?)?.toDouble() ?? 0.0,
       modulationType: json['modulation'] ?? 'NONE',
       sdrNode: json['node'] ?? 0,
+      receivedTime: json['received_time'] ?? "",
     );
   }
 
@@ -53,6 +58,7 @@ class AlertData {
       'center_freq': centerFreq,
       'modulation': modulationType,
       'node': sdrNode,
+      'received_time': receivedTime,
     };
   }
 }
