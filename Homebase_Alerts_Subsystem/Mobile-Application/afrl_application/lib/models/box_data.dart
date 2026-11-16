@@ -14,14 +14,16 @@ class BoxData {
   final String value;
   final IconData icon;
   final Color boxColor;
+  final Color borderColor;
   final Color textColor;
   final Color iconColor;
 
   BoxData({
     required this.label,
-    required this.value,
+    this.value = "",
     required this.icon,
     this.boxColor = const Color(0xFF1E1E1E),
+    this.borderColor = const Color(0xFF1E1E1E),
     this.textColor = Colors.white60,
     this.iconColor = Colors.greenAccent,
   });
