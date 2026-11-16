@@ -45,23 +45,38 @@ class AlertSystemTaskHandler extends TaskHandler {
     dev.log('==== TASK HANDLER RECEIVED COMMAND: $data ====');
     if (data == 'RESET') {
       _tcpService?.sendResetCommand();
-    } else if (data == 'RECONNECT') {
-      _connectSocketFromPrefs(forceReconnect: true);
     } else if (data == 'GET_LAST_JSON') {
       if (_lastReceivedJSON != null) {
         dev.log('==== RETURNING CACHED ALERTS TO REOPENED UI ====');
         FlutterForegroundTask.sendDataToMain(_lastReceivedJSON!);
       }
+    } else if (data is String) {
+      try {
+          final decoded = jsonDecode(data);
+          if (decoded is Map && decoded['command'] == 'RECONNECT') {
+            _connectSocketFromPrefs(
+              forceReconnect: true,
+              overrideIp: decoded['ip']?.toString(),
+              overridePort: decoded['port']?.toString(),
+            );
+          }
+        } catch (_) {
+          // Fallback if plain 'RECONNECT' string is ever sent
+          if (data == 'RECONNECT') {
+            _connectSocketFromPrefs(forceReconnect: true);
+          }
+        }
     }
   }
 
-  Future<void> _connectSocketFromPrefs({bool forceReconnect = false}) async {
+  Future<void> _connectSocketFromPrefs({bool forceReconnect = false, String? overrideIp, String? overridePort}) async {
     if (_isConnecting) return;
 
     try {
       final prefs = await SharedPreferences.getInstance();
-      final String hostIp = prefs.getString('server_ip') ?? '10.0.2.2';
-      final String port = prefs.getString('server_port') ?? '5000';
+      await prefs.reload();
+      final String hostIp = overrideIp ?? prefs.getString('server_ip') ?? '10.0.2.2';
+      final String port = overridePort ?? prefs.getString('server_port') ?? '5000';
 
       // If already connected to the target IP & Port, do not tear down the socket!
       if (!forceReconnect && _tcpService != null && _currentIp == hostIp && _currentPort == port && _tcpService!.isConnected) {
@@ -100,7 +115,7 @@ class AlertSystemTaskHandler extends TaskHandler {
           } else {
             FlutterForegroundTask.updateService(
               notificationTitle: 'System Operational',
-              notificationText: 'Monitoring host server for UAV threats',
+              notificationText: 'Monitoring server ($hostIp:$port) for alerts',
             );
           }
         }
@@ -108,7 +123,7 @@ class AlertSystemTaskHandler extends TaskHandler {
 
       FlutterForegroundTask.updateService(
         notificationTitle: 'AFRL Alert System',
-        notificationText: 'Connecting to server ($hostIp:$port)',
+        notificationText: 'Connecting to server ($hostIp:$port)...',
       );
 
       await _tcpService?.connect(_currentIp, _currentPort);
