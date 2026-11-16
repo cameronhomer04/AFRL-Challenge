@@ -143,7 +143,11 @@ class _DashboardScreenState extends State<DashboardScreen> {
                           _hostIp = newIp;
                           _port = newPort;
                         });
-                        FlutterForegroundTask.sendDataToTask('RECONNECT');
+                        FlutterForegroundTask.sendDataToTask(jsonEncode({
+                          'command' : 'RECONNECT',
+                          'ip' : newIp,
+                          'port' : newPort,
+                        }));
                       },
                     ),
                   ),
