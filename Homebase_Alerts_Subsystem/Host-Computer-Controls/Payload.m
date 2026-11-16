@@ -73,7 +73,7 @@ classdef Payload
         % Simple function to decode our actually centerFreq value based on
         % the hex val received
         function freqMHz = decodeFreq(~, unshiftedFreq)
-            freqMHz = 70 + (unshiftedFreq * .1);
+            freqMHz = 70 + (double(unshiftedFreq) * .1);
         end
 
         % Simple function to validate our checksum
