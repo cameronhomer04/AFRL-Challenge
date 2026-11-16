@@ -10,6 +10,7 @@ Description:    Setup the foreground task handler
 import 'dart:developer' as dev;
 import 'dart:convert';
 import 'dart:async';
+import 'dart:ffi';
 import 'package:flutter_foreground_task/flutter_foreground_task.dart';
 import 'package:shared_preferences/shared_preferences.dart';
 
@@ -32,6 +33,7 @@ class AlertSystemTaskHandler extends TaskHandler {
   bool _isConnecting = false;
 
   String? _lastReceivedJSON;
+  final List<String> _alertTimestamps = [];
 
   @override
   Future<void> onStart(DateTime timestamp, TaskStarter starter) async {
@@ -97,16 +99,26 @@ class AlertSystemTaskHandler extends TaskHandler {
         if (tempAlerts.isNotEmpty) {
           final now = DateTime.now();
           final String formattedTime = 
+            "${now.month.toString().padLeft(2, '0')}/"
+            "${now.day.toString().padLeft(2, '0')}/"
+            "${now.year} "
             "${now.hour.toString().padLeft(2, '0')}:"
             "${now.minute.toString().padLeft(2, '0')}:"
             "${now.second.toString().padLeft(2, '0')}."
             "${now.millisecond.toString().padLeft(3, '0')}";
-
-          final rawJsonList = tempAlerts.map((a) {
-            final map = a.toJson();
-            map['received_time'] = formattedTime;
-            return map;
-          }).toList();
+          final bool isScanningOnly = tempAlerts.length == 1 && !tempAlerts.first.alertStatus;
+          if (isScanningOnly || tempAlerts.length < _alertTimestamps.length){
+            _alertTimestamps.clear();
+          }
+          final List<Map<String, dynamic>> rawJsonList = [];
+          for (int i = 0; i < tempAlerts.length; i++){
+            if (i >= _alertTimestamps.length){
+              _alertTimestamps.add(formattedTime);
+            }
+            final map = tempAlerts[i].toJson();
+            map['received_time'] = _alertTimestamps[i];
+            rawJsonList.add(map);
+          }
           final String jsonString = jsonEncode(rawJsonList);
           dev.log('==== Sending data to main: $jsonString ====');
           _lastReceivedJSON = jsonString;
