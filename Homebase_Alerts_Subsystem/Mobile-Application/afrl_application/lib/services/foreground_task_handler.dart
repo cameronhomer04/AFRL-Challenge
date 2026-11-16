@@ -95,7 +95,18 @@ class AlertSystemTaskHandler extends TaskHandler {
       _alertSub = _tcpService?.alertStream.listen((tempAlerts) {
         dev.log('==== Stream emitted ${tempAlerts.length} items ====');
         if (tempAlerts.isNotEmpty) {
-          final rawJsonList = tempAlerts.map((a) => a.toJson()).toList();
+          final now = DateTime.now();
+          final String formattedTime = 
+            "${now.hour.toString().padLeft(2, '0')}:"
+            "${now.minute.toString().padLeft(2, '0')}:"
+            "${now.second.toString().padLeft(2, '0')}."
+            "${now.millisecond.toString().padLeft(3, '0')}";
+
+          final rawJsonList = tempAlerts.map((a) {
+            final map = a.toJson();
+            map['received_time'] = formattedTime;
+            return map;
+          }).toList();
           final String jsonString = jsonEncode(rawJsonList);
           dev.log('==== Sending data to main: $jsonString ====');
           _lastReceivedJSON = jsonString;

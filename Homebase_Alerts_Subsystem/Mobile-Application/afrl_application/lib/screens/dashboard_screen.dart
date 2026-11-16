@@ -187,6 +187,11 @@ class _DashboardScreenState extends State<DashboardScreen> {
                     for (final alert in alerts.where((alert) => alert.alertStatus)) ...[
                       _buildDataBox(
                         BoxData(
+                          label: "SDR Node",
+                          value: "${alert.sdrNode}",
+                          icon: Icons.router,
+                        ),
+                        BoxData(
                           label: "Center Frequency",
                           value: alert.centerFreq >= 1e3
                               ? "${(alert.centerFreq / 1e3).toStringAsFixed(2)} GHz"
@@ -199,9 +204,9 @@ class _DashboardScreenState extends State<DashboardScreen> {
                           icon: Icons.graphic_eq,
                         ),
                         BoxData(
-                          label: "SDR Node",
-                          value: "${alert.sdrNode}",
-                          icon: Icons.router,
+                          label: "Received Time",
+                          value: alert.receivedTime,
+                          icon: Icons.access_time,
                         ),
                       ),
                       const SizedBox(height: 24),
@@ -254,7 +259,7 @@ class _DashboardScreenState extends State<DashboardScreen> {
   }
 
   // Helper function to build a singular alert data box
-  Widget _buildDataBox(BoxData centerFreqBox, BoxData modTypeBox, BoxData sdrNodeBox){
+  Widget _buildDataBox(BoxData sdrNodeBox, BoxData centerFreqBox, BoxData modTypeBox, BoxData receivedTimeBox) {
     return Container(
       padding: const EdgeInsets.all(16.0),
       decoration: BoxDecoration(
@@ -274,6 +279,12 @@ class _DashboardScreenState extends State<DashboardScreen> {
               Expanded(child: _buildInfoBox(centerFreqBox)),
               const SizedBox(width: 12),
               Expanded(child: _buildInfoBox(modTypeBox)),
+            ],
+          ),
+          const SizedBox(height: 12),
+          Row(
+            children: [
+              Expanded(child: _buildCompactInfoBox(receivedTimeBox)),
             ],
           ),
         ],
@@ -318,6 +329,42 @@ class _DashboardScreenState extends State<DashboardScreen> {
             style: TextStyle(
               color: data.textColor,
               fontSize: 16,
+            ),
+          ),
+        ],
+      ),
+    );
+  }
+
+  Widget _buildCompactInfoBox(BoxData data) {
+    return Container(
+      padding: const EdgeInsets.symmetric(horizontal: 16.0, vertical: 10.0),
+      decoration: BoxDecoration(
+        color: data.boxColor,
+        borderRadius: BorderRadius.circular(10.0),
+      ),
+      child: Row(
+        mainAxisAlignment: MainAxisAlignment.center,
+        children: [
+          Icon(
+            data.icon,
+            color: data.iconColor,
+            size: 18,
+          ),
+          const SizedBox(width: 8),
+          Text(
+            "${data.label}: ",
+            style: TextStyle(
+              color: data.textColor,
+              fontSize: 14,
+              fontWeight: FontWeight.bold,
+            ),
+          ),
+          Text(
+            data.value,
+            style: TextStyle(
+              color: data.textColor,
+              fontSize: 14,
             ),
           ),
         ],

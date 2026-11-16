@@ -50,7 +50,7 @@ function tcp_main()
             
         elseif strcmpi(userInput, 'reset')
             activeAlerts = defaultScanningStruct;
-            fprintf('--> STATE RESET: Cleared all alerts. System is in SCANNING mode.\n');
+            fprintf('--> STATE RESET: Cleared all alerts. System is in SCANNING mode.');
             broadcastState(server, activeAlerts);
             
         elseif strcmpi(userInput, 'status')
@@ -72,7 +72,7 @@ function tcp_main()
                             activeAlerts(end+1) = newAlert; %#ok<AGROW>
                         end
                         
-                        fprintf('--> B210 RF ALERT CAPTURED & INJECTED! (Node %d | %.2f MHz | %s)\n', ...
+                        fprintf('--> B210 RF ALERT CAPTURED & INJECTED! (Node %d | %.2f MHz | %s)', ...
                             p.sdrNode, p.centerFreq, p.modType);
                         
                         broadcastState(server, activeAlerts);
@@ -99,7 +99,7 @@ function tcp_main()
                         activeAlerts(end+1) = newAlert; %#ok<AGROW>
                     end
                     
-                    fprintf('--> CHECKSUM PASSED! Total Active Alerts: %d (Added Node %d | %.2f MHz | %s)\n', ...
+                    fprintf('--> CHECKSUM PASSED! Total Active Alerts: %d (Added Node %d | %.2f MHz | %s)', ...
                         length(activeAlerts), p.sdrNode, p.centerFreq, p.modType);
                     
                     broadcastState(server, activeAlerts);
@@ -118,6 +118,8 @@ function broadcastState(server, alertState)
     if server.Connected
         jsonBody = formatJsonArray(alertState);
         write(server, uint8([jsonBody newline]));
+        txTime = string(datetime('now', 'Format', 'HH:mm:ss.SSS'));
+        fprintf('\n--> [%s] TRANSMITTED TO CLIENT: %s\n', txTime, jsonBody);
     else
         fprintf('--> INFO: No mobile client connected to receive stream update.\n');
     end
@@ -144,6 +146,9 @@ function handleTcpClient(src, ~, getAlertsFcn, setAlertsFcn, defaultScanningStru
             setAlertsFcn(defaultScanningStruct);
             fprintf('\n--> REMOTE RESET RECEIVED: Cleared alerts via Mobile App.\nServer Console >> ');
             broadcastState(src, defaultScanningStruct);
+        elseif strcmp(inboundText, 'ACK')
+            ackTime = string(datetime('now', 'Format', 'HH:mm:ss.SSS'));
+            fprintf('\n--> [%s] CLIENT ACK RECEIVED\nServer Console >> ', ackTime);
         else
             broadcastState(src, getAlertsFcn());
         end
