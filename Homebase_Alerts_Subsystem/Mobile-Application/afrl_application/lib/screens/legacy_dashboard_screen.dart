@@ -34,6 +34,7 @@ class _LegacyDashboardScreenState extends State<LegacyDashboardScreen> {
       centerFreq: 0.0,
       modulationType: "NONE",
       sdrNode: 0,
+      checksumValid: true,
     ),
   ];
   Timer? _pollingTimer;

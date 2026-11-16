@@ -11,7 +11,7 @@ function tcp_main()
     addpath(fullfile(pwd, '', 'Mesh_Network_Subsystem'))
     
     port = 5000;
-    defaultScanningStruct = struct('status', "SCANNING", 'center_freq', 0.0, 'modulation', "NONE", 'node', 0);
+    defaultScanningStruct = struct('status', "SCANNING", 'center_freq', 0.0, 'modulation', "NONE", 'node', 0, 'checksum_valid', true);
     activeAlerts = defaultScanningStruct;
     
     function current = getAlerts()
@@ -63,22 +63,22 @@ function tcp_main()
                 
                 if strlength(hexPayload) > 0
                     p = Payload(hexPayload);
-                    if p.isValid
-                        newAlert = p.toAlertStruct();
-                        
-                        if activeAlerts(1).node == 0 && strcmp(activeAlerts(1).status, "SCANNING")
-                            activeAlerts = newAlert;
-                        else
-                            activeAlerts(end+1) = newAlert; %#ok<AGROW>
-                        end
-                        
-                        fprintf('--> B210 RF ALERT CAPTURED & INJECTED! (Node %d | %.2f MHz | %s)', ...
-                            p.sdrNode, p.centerFreq, p.modType);
-                        
-                        broadcastState(server, activeAlerts);
+                    newAlert = p.toAlertStruct();
+                    if activeAlerts(1).node == 0 && strcmp(activeAlerts(1).status, "SCANNING")
+                        activeAlerts = newAlert;
                     else
-                        fprintf('--> B210 Payload Checksum Failed (%s).\n', hexPayload);
+                        activeAlerts(end+1) = newAlert; %#ok<AGROW>
                     end
+                    
+                    if p.isValid
+                        fprintf('--> CHECKSUM PASSED! Total Active Alerts: %d (Added Node %d | %.2f MHz | %s)\n', ...
+                            length(activeAlerts), p.sdrNode, p.centerFreq, p.modType);
+                    else
+                        fprintf('--> WARNING: CHECKSUM FAILED! Forwarding unverified alert (Node %d | %.2f MHz | %s)\n', ...
+                            p.sdrNode, p.centerFreq, p.modType);
+                    end
+                    
+                    broadcastState(server, activeAlerts);
                 else
                     fprintf('--> B210 RF Capture failed or returned empty payload.\n');
                 end
@@ -89,23 +89,22 @@ function tcp_main()
         elseif ~isempty(userInput)
             try
                 p = Payload(userInput);
+                newAlert = p.toAlertStruct();
+                if activeAlerts(1).node == 0 && strcmp(activeAlerts(1).status, "SCANNING")
+                    activeAlerts = newAlert;
+                else
+                    activeAlerts(end+1) = newAlert; %#ok<AGROW>
+                end
                 
                 if p.isValid
-                    newAlert = p.toAlertStruct();
-                    
-                    if activeAlerts(1).node == 0 && strcmp(activeAlerts(1).status, "SCANNING")
-                        activeAlerts = newAlert;
-                    else
-                        activeAlerts(end+1) = newAlert; %#ok<AGROW>
-                    end
-                    
-                    fprintf('--> CHECKSUM PASSED! Total Active Alerts: %d (Added Node %d | %.2f MHz | %s)', ...
+                    fprintf('--> CHECKSUM PASSED! Total Active Alerts: %d (Added Node %d | %.2f MHz | %s)\n', ...
                         length(activeAlerts), p.sdrNode, p.centerFreq, p.modType);
-                    
-                    broadcastState(server, activeAlerts);
                 else
-                    fprintf('--> CHECKSUM FAILED! Payload dropped.\n');
+                    fprintf('--> WARNING: CHECKSUM FAILED! Forwarding unverified alert (Node %d | %.2f MHz | %s)\n', ...
+                        p.sdrNode, p.centerFreq, p.modType);
                 end
+                
+                broadcastState(server, activeAlerts);
             catch err
                 fprintf('--> ERROR: Invalid command or payload format (%s)\n', err.message);
             end

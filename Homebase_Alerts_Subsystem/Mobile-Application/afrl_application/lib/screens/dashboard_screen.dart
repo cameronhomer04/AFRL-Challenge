@@ -38,6 +38,7 @@ class _DashboardScreenState extends State<DashboardScreen> {
       centerFreq: 0.0,
       modulationType: "NONE",
       sdrNode: 0,
+      checksumValid: true
     ),
   ]);
 
@@ -173,12 +174,14 @@ class _DashboardScreenState extends State<DashboardScreen> {
                       children: [
                         Expanded(
                           child: _buildAlertBox(
-                            isAlertActive ? "ALERT ACTIVE" : "SCANNING ACTIVE",
-                            isAlertActive ? Icons.warning_amber_rounded : Icons.task_alt_rounded,
-                            isAlertActive ? Colors.redAccent : Colors.greenAccent,
-                            isAlertActive ? Colors.red : Colors.green,
-                            Colors.black,
-                            isAlertActive ? Colors.red : Colors.green,
+                            BoxData(
+                              label: isAlertActive ? "ALERT ACTIVE" : "SCANNING ACTIVE",
+                              icon: isAlertActive ? Icons.warning_amber_rounded : Icons.task_alt_rounded,
+                              boxColor: isAlertActive ? Colors.redAccent : Colors.greenAccent,
+                              borderColor: isAlertActive ? Colors.red : Colors.green,
+                              textColor: Colors.black,
+                              iconColor: isAlertActive ? Colors.red : Colors.green,
+                            )
                           ),
                         ),
                       ],
@@ -208,6 +211,13 @@ class _DashboardScreenState extends State<DashboardScreen> {
                           value: alert.receivedTime,
                           icon: Icons.access_time,
                         ),
+                        BoxData(
+                          label: alert.checksumValid ? "Valid Checksum" : "Invalid Checksum",
+                          value: alert.checksumValid ? "No bit errors detected" : "Bit error(s) detected",
+                          icon: alert.checksumValid ? Icons.check_circle : Icons.error,
+                          textColor: alert.checksumValid ? Colors.greenAccent : Colors.redAccent,
+                          iconColor: alert.checksumValid ? Colors.greenAccent : Colors.redAccent,
+                        ),
                       ),
                       const SizedBox(height: 24),
                     ],
@@ -222,14 +232,14 @@ class _DashboardScreenState extends State<DashboardScreen> {
   }
 
   // Helper function to build alert box for the dashboard
-  Widget _buildAlertBox(String label, IconData icon, Color boxColor, Color borderColor, Color textColor, Color iconColor) {
+  Widget _buildAlertBox(BoxData alertBox) {
     return Container(
       padding: const EdgeInsets.all(20.0),
       // Build a box with a border radius and a background color that can be customized
       decoration: BoxDecoration(
-        color: boxColor,
+        color: alertBox.boxColor,
         border: Border.all(
-                  color: borderColor,
+                  color: alertBox.borderColor,
                   width: 2,
         ),
         borderRadius: BorderRadius.circular(12),
@@ -239,16 +249,16 @@ class _DashboardScreenState extends State<DashboardScreen> {
         children: [
           // Icon in the box
           Icon(
-            icon, 
-            color: iconColor, 
+            alertBox.icon, 
+            color: alertBox.iconColor, 
             size: 36
           ),
           const SizedBox(width: 16),
           // Text for label
           Text(
-            label,
+            alertBox.label,
             style: TextStyle(
-              color: textColor,
+              color: alertBox.textColor,
               fontSize: 20,
               fontWeight: FontWeight.bold,
             ),
@@ -259,7 +269,7 @@ class _DashboardScreenState extends State<DashboardScreen> {
   }
 
   // Helper function to build a singular alert data box
-  Widget _buildDataBox(BoxData sdrNodeBox, BoxData centerFreqBox, BoxData modTypeBox, BoxData receivedTimeBox) {
+  Widget _buildDataBox(BoxData sdrNodeBox, BoxData centerFreqBox, BoxData modTypeBox, BoxData receivedTimeBox, BoxData checksumValidBox) {
     return Container(
       padding: const EdgeInsets.all(16.0),
       decoration: BoxDecoration(
@@ -268,6 +278,14 @@ class _DashboardScreenState extends State<DashboardScreen> {
       ),
       child: Column(
         children: [
+          //if(checksumValidBox.label == "Invalid Checksum") ...[
+            Row(
+              children: [
+                Expanded(child: _buildCompactInfoBox(checksumValidBox)),
+              ],
+            ),
+          //],
+          const SizedBox(height: 12),
           Row(
             children: [
               Expanded(child: _buildInfoBox(sdrNodeBox)),
