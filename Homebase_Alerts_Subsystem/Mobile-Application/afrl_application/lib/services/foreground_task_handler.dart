@@ -10,7 +10,6 @@ Description:    Setup the foreground task handler
 import 'dart:developer' as dev;
 import 'dart:convert';
 import 'dart:async';
-import 'dart:ffi';
 import 'package:flutter_foreground_task/flutter_foreground_task.dart';
 import 'package:shared_preferences/shared_preferences.dart';
 
