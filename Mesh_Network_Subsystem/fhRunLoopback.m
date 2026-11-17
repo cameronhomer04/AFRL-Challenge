@@ -38,7 +38,16 @@ function stats = fhRunLoopback(cfg, fh, sdr, hexMessages, opts)
 %       extraFrames       frames still recorded after the slot ends, to cover
 %                         the delay from TX to RX inside the radio (default 12,
 %                         about 60 ms; a B210 on USB can delay by 20-40 ms)
-%       maxFlushFrames    most stale RX frames thrown away after a hop (default 32)
+%       maxFlushFrames    most stale RX frames thrown away after a hop
+%                         (default 400, about 2 s). The flush stops early as
+%                         soon as a read has to wait for new samples, i.e. the
+%                         backlog is gone. An X310 on Ethernet buffers the
+%                         whole decode pause (~0.4 s) without an overflow, so
+%                         a short fixed flush leaves the previous slot's
+%                         packets in the recording ("wrong slot").
+%       txLeadFrames      frames queued in the transmitter before the first
+%                         read, so a late loop pass does not leave a gap on
+%                         air (default 4, about 20 ms)
 %
 %   stats - totals, plus
 %       slotLog  struct of column vectors, ONE ROW PER SLOT (the proof):
@@ -47,7 +56,8 @@ function stats = fhRunLoopback(cfg, fh, sdr, hexMessages, opts)
 %           pktsReceived, pktsMatched, pass, wrongSlot, checksumFailed,
 %           bitErrors, bitsCompared, meanMetric, freqOffsetHz, peakDbfs, snrDb,
 %           missedPkts (packet numbers not received, e.g. '32-38'),
-%           warmup (true for start-up slots, which are not counted)
+%           warmup (true for start-up slots, which are not counted),
+%           underruns / overflows (TX gaps / RX drops during the slot)
 %           With routeMode on (A* routing number in every payload):
 %           receivedRoute = routing number decoded in this slot, routeSdrs =
 %           the SDR IDs it lists, myIdOnRoute = 1 if opts.myId is on it,
@@ -64,8 +74,12 @@ function stats = fhRunLoopback(cfg, fh, sdr, hexMessages, opts)
 %       excluded channels dropped during the run (also in fh.allowed)
 %
 % Each slot:
+% Before the first slot both streams are started (TX first, then RX) and
+% the RX backlog from setup is drained, so slot 1 is not lost to start-up.
+%
 %   1. both the TX and the RX are retuned to the slot's channel,
-%   2. stale RX samples from the previous channel are thrown away,
+%   2. stale RX samples from the previous channel are thrown away, until
+%      the receiver is reading samples as they arrive,
 %   3. the slot is sent one frame at a time, reading one RX frame after
 %      each TX frame, so both stream together,
 %   4. every packet in the recording is decoded and checked: header (slot
@@ -109,6 +123,7 @@ function stats = fhRunLoopback(cfg, fh, sdr, hexMessages, opts)
 
     spf = cfg.samplesPerFrame;
     sps = cfg.samplesPerSymbol;
+    frameTime = spf / cfg.sampleRate;      % real time one RX frame covers (s)
     winSamples = opts.framesPerBlock * spf;
     neededSamples = (2*cfg.maxPacketSymbols + 2*cfg.filterSpan + 10) * sps;
     if winSamples < neededSamples
@@ -164,6 +179,24 @@ function stats = fhRunLoopback(cfg, fh, sdr, hexMessages, opts)
         fprintf('Press Ctrl+C to end.\n');
     end
 
+    % ---- Start both streams before the first slot ----
+    % The first call to each radio object sets up the hardware, which takes
+    % seconds on an X310. If the receiver starts first, it buffers the whole
+    % transmitter setup time, and the first slots record that backlog
+    % instead of their own packets (slot 1 then decodes slot 0's packets as
+    % "wrong slot"). So: start the transmitter with one silent frame, then
+    % the receiver, then drain anything the receiver buffered meanwhile.
+    % The silent frame must have the SAME data type as the slot frames
+    % (the transmitter locks its input type on the first call), so take it
+    % from a real slot frame.
+    proto = fhBuildSlotFrame(cfg, layouts{1}, 0, messages{1});
+    sdr.tx(complex(zeros(spf, 1, 'like', proto)));
+    for k = 1:5000                                  % up to ~25 s of backlog
+        t0 = tic;
+        sdr.rx();
+        if k > 1 && toc(t0) > 0.5*frameTime, break; end   % 1st call = setup, always slow
+    end
+
     slot = 0;
     msgIndex = 1;
     lastSwitch = tic;
@@ -188,9 +221,14 @@ function stats = fhRunLoopback(cfg, fh, sdr, hexMessages, opts)
         fhTune(sdr.rx, fh, ch);
 
         % ---- 2. Throw away RX samples left from before the hop ----
+        % Buffered (stale) frames come back almost at once; once a read has
+        % to wait for new samples, the backlog is gone and the receiver is
+        % live. A fixed count is not enough: an X310 on Ethernet buffers the
+        % whole decode pause without reporting an overflow.
         for k = 1:opts.maxFlushFrames
+            t0 = tic;
             [~, ~, ov] = sdr.rx();
-            if ov, break; end
+            if ov || toc(t0) > 0.5*frameTime, break; end
         end
 
         % ---- 3. Send the slot and record it at the same time ----
@@ -198,19 +236,33 @@ function stats = fhRunLoopback(cfg, fh, sdr, hexMessages, opts)
         frame(end+1 : nChunks*spf) = 0;
         rec = complex(zeros((nChunks + opts.extraFrames) * spf, 1));
         nRec = 0;
+        slotUnder = 0; slotOver = 0;
+        % complex() is required: MATLAB turns an all-zero slice of a
+        % complex array (the silent lead-in) into a real one, and the
+        % transmitter rejects a change between real and complex input.
+        txChunk = @(c) complex(frame((c-1)*spf + (1:spf)));
+        % Head start: queue txLeadFrames frames before the first read, so the
+        % transmitter always has spare samples. Without it the transmitter is
+        % only one frame ahead, and any late loop pass leaves a gap on air.
+        % The first call of a slot always reports an underrun (nothing was
+        % sent while the previous slot was decoded), so it is not counted.
+        nLead = min(opts.txLeadFrames, nChunks);
+        for c = 1:nLead
+            u = double(sdr.tx(txChunk(c)));
+            if c > 1, slotUnder = slotUnder + u; end
+        end
         for c = 1:nChunks + opts.extraFrames
-            if c <= nChunks
-                % complex() is required: MATLAB turns an all-zero slice of a
-                % complex array (the silent lead-in) into a real one, and the
-                % transmitter rejects a change between real and complex input.
-                chunk = complex(frame((c-1)*spf + (1:spf)));
-                stats.underruns = stats.underruns + double(sdr.tx(chunk));
+            cTx = c + nLead;                         % keep nLead frames queued
+            if cTx <= nChunks
+                slotUnder = slotUnder + double(sdr.tx(txChunk(cTx)));
             end
             [d, len, ov] = sdr.rx();
             rec(nRec + (1:len)) = d(1:len);
             nRec = nRec + len;
-            stats.overflows = stats.overflows + double(ov);
+            slotOver = slotOver + double(ov);
         end
+        stats.underruns = stats.underruns + slotUnder;
+        stats.overflows = stats.overflows + slotOver;
         rec = double(rec(1:nRec));
         tSlot = toc(runTimer);
         % Pad the end with silence: receivePacket only searches for a packet
@@ -270,7 +322,7 @@ function stats = fhRunLoopback(cfg, fh, sdr, hexMessages, opts)
                       rxRoute, rxSdrs, onRoute, sentText, rxText, lay.pktsPerSlot, ...
                       pktsReceived, pktsMatched, pass, nWrongSlot, nChecksum, bitErr, bitsCmp, ...
                       meanOrNaN(metrics), meanOrNaN(offsets), maxOrNaN(peaks), snrDb, ...
-                      missedText, isWarmup);
+                      missedText, isWarmup, slotUnder, slotOver);
 
         if isWarmup
             if opts.printEachSlot
@@ -306,7 +358,8 @@ function stats = fhRunLoopback(cfg, fh, sdr, hexMessages, opts)
                     tSlot, slot, ch, fHz/1e6, verdict, pktsReceived, lay.pktsPerSlot, ...
                     pktsMatched, bitErr, snrDb);
             if pktsReceived < lay.pktsPerSlot
-                fprintf('           missed packet(s) %s\n', missedText);
+                fprintf('           missed packet(s) %s   (TX underruns %d, RX overflows %d)\n', ...
+                        missedText, slotUnder, slotOver);
             end
             if opts.routeMode
                 if isnan(onRoute), onText = '-'; elseif onRoute, onText = 'yes'; else, onText = 'no'; end
@@ -382,6 +435,11 @@ function stats = fhRunLoopback(cfg, fh, sdr, hexMessages, opts)
             stats.pktsMatched);
     fprintf('Bit errors: %d / %d   BER: %.2e\n', stats.bitErrors, stats.bitsCompared, stats.BER);
     fprintf('Checksum failed: %d   Wrong slot: %d\n', stats.checksumFailed, stats.wrongSlot);
+    fprintf('TX underruns during slots: %d   RX overflows: %d   (TX head start %d frames)\n', ...
+            stats.underruns, stats.overflows, opts.txLeadFrames);
+    if stats.underruns > 0
+        fprintf('  Underruns leave gaps on air and lose packets: raise txLeadFrames.\n');
+    end
     failed = L.slot(~L.pass & ~L.warmup);
     if ~isempty(failed)
         fprintf('Slots that failed: %s\n', mat2str(failed(1:min(end, 30))'));
@@ -474,7 +532,8 @@ function L = emptyLog()
                'pass', false(0,1), 'wrongSlot', zeros(0,1), 'checksumFailed', zeros(0,1), ...
                'bitErrors', zeros(0,1), 'bitsCompared', zeros(0,1), 'meanMetric', zeros(0,1), ...
                'freqOffsetHz', zeros(0,1), 'peakDbfs', zeros(0,1), 'snrDb', zeros(0,1), ...
-               'missedPkts', {cell(0,1)}, 'warmup', false(0,1));
+               'missedPkts', {cell(0,1)}, 'warmup', false(0,1), ...
+               'underruns', zeros(0,1), 'overflows', zeros(0,1));
 end
 
 function L = appendLog(L, varargin)
@@ -581,8 +640,8 @@ function opts = fillDefaults(opts)
                       'showHopDisplay', true, 'printEachSlot', true, 'minPacketsPerSlot', 1, ...
                       'adaptive', true, 'surveyVisits', 2, 'minPassRate', 0.5, ...
                       'minPacketRate', 0.5, 'minChannels', 25, ...
-                      'framesPerBlock', 4, 'extraFrames', 12, 'maxFlushFrames', 32, ...
-                      'warmupSlots', 1, ...
+                      'framesPerBlock', 4, 'extraFrames', 12, 'maxFlushFrames', 400, ...
+                      'warmupSlots', 1, 'txLeadFrames', 4, ...
                       'routeMode', false, 'myId', NaN);
     names = fieldnames(defaults);
     for k = 1:numel(names)
