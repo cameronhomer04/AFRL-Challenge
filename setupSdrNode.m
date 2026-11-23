@@ -10,9 +10,11 @@ function sdr = setupSdrNode(cfg, radio, role, rxBurstFrames)
 %   radio - one element from findSdrRadios / selectSdrRadio. For role
 %           "both" you may pass two, [txRadio, rxRadio], to transmit on
 %           one radio and receive on another attached to the same computer.
-%   role  - "tx"   transmit only (no receiver is created)
-%           "rx"   receive only  (no transmitter is created)
-%           "both" transmit and receive (loopback test, later a relay)
+%   role  - "tx"       transmit only (no receiver is created)
+%           "rx"       receive only  (no transmitter is created)
+%           "both"     transmit and receive (loopback test)
+%           "repeater" transmit and receive on one radio (mesh relay,
+%                      fhRunRepeater). Both objects stay open for the run.
 %
 %   sdr   - struct with fields
 %       role     the role, lower case
@@ -40,11 +42,11 @@ function sdr = setupSdrNode(cfg, radio, role, rxBurstFrames)
             sdr.txRadio = radio(1);
         case "rx"
             sdr.rxRadio = radio(1);
-        case "both"
+        case {"both", "repeater"}
             sdr.txRadio = radio(1);
             sdr.rxRadio = radio(end);       % same radio unless two were given
         otherwise
-            error('Unknown role "%s". Use "tx", "rx" or "both".', role);
+            error('Unknown role "%s". Use "tx", "rx", "both" or "repeater".', role);
     end
 
     if ~isempty(sdr.txRadio)

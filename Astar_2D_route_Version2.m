@@ -17,7 +17,7 @@ Change:
     
 %}
 %% ---------------- Build the map ----------------
-rows = 10; cols = 10;
+rows = 3; cols = 1;
 map  = zeros(rows, cols);
 
 % Fixed walls
@@ -32,21 +32,21 @@ map(25, 30:33) = 0;          % gap in a wall
 %}
 
 %% Random rectangular obstacles
-
+%{
 rng(1);
 for k = 1:5
     h = randi([2 5]); w = randi([2 6]);
     r = randi([1 rows-h]); c = randi([1 cols-w]);
     map(r:r+h-1, c:c+w-1) = 1;
 end
-
+%}
 
 start = [1, 1];         % [row, col]
-goal  = [10, 10];       % [row, col]
+goal  = [3, 1];       % [row, col]
 map(start(1), start(2)) = 0;   % make sure endpoints are free
 map(goal(1),  goal(2))  = 0;
 
-allowDiagonal = false;   % 8-connected if true, 4-connected if false
+allowDiagonal = true;   % 8-connected if true, 4-connected if false
 
 %% ---------------- SDR bank ----------------
 % Each square has its SDR(s) at the centre. sdrBank{row, col} lists the IDs
@@ -58,18 +58,18 @@ allowDiagonal = false;   % 8-connected if true, 4-connected if false
 
 
 sdrsPerCell = ones(rows, cols);         % 1 SDR in a normal square
-%{
-sdrsPerCell(30:40, 20:50) = 5;          % example: squares that need 5 SDRs
-sdrsPerCell(5:15, 30:40)  = 3;          % example: squares that need 3 SDRs
-%}
-sdrBank = autoSdrBank(map, sdrsPerCell);
+
+%sdrsPerCell(5:9, 2:5) = 2;          % example: squares that need 5 SDRs
+%sdrsPerCell(5:15, 30:40)  = 3;          % example: squares that need 3 SDRs
+
+%sdrBank = autoSdrBank(map, sdrsPerCell);
 
 %
 % Option B (hardware): place your real SDRs by hand instead of Option A
-%   sdrBank = cell(rows, cols);
-%   sdrBank{1, 1} = 1;                  % SDR 1 in square (row 1, col 1)
-%   sdrBank{1, 2} = 2;
-%   sdrBank{2, 2} = [3 4 5 6 7];        % a square that needs 5 SDRs
+sdrBank = cell(rows, cols);
+sdrBank{1, 1} = 1;                  % SDR 1 in square (row 1, col 1)
+sdrBank{3, 1} = 3;
+sdrBank{2, 1} = 2;        % a square that needs 5 SDRs
 % Watch the order: sdrBank{row, col}. The plot's data tip shows X = col, Y = row.
 %
 % Either way, you can edit single squares afterwards, e.g.
@@ -175,8 +175,12 @@ if maxW > minW
     tintAlpha(~isWeighted) = 0;
     tint = cat(3, ones(rows, cols), 0.55 * ones(rows, cols), zeros(rows, cols));
     image(ax1, tint, 'AlphaData', tintAlpha);
-    % Dashed outline around every weighted region
-    contour(ax1, double(isWeighted), [0.5 0.5], 'LineColor', [0.85 0.4 0], ...
+    % Dashed outline around every weighted region. A border of zeros is added
+    % so contour also works on 1-row / 1-column maps (it needs at least 2x2)
+    % and outlines regions that touch the edge of the map.
+    outline = zeros(rows + 2, cols + 2);
+    outline(2:end-1, 2:end-1) = isWeighted;
+    contour(ax1, 0:cols+1, 0:rows+1, outline, [0.5 0.5], 'LineColor', [0.85 0.4 0], ...
             'LineStyle', '--', 'LineWidth', 1.2);
 end
 
